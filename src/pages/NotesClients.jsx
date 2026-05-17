@@ -108,7 +108,7 @@ export default function NotesClients() {
     doc.setFont(undefined, 'normal');
 
     const activeNotes = filteredNotes
-      .filter((n) => !n.annulee && !hiddenIds.has(n.id))
+      .filter((n) => !n.annulee && !pairHiddenIds.has(n.id))
       .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
     const drawRow = (cells, bold = false) => {
@@ -147,7 +147,7 @@ export default function NotesClients() {
     doc.text(title, margin, 12); doc.setFont(undefined, 'normal');
 
     const grp = {};
-    filteredNotes.filter((n) => !n.annulee && !hiddenIds.has(n.id)).forEach((n) => {
+    filteredNotes.filter((n) => !n.annulee && !pairHiddenIds.has(n.id)).forEach((n) => {
       const k = groupBy === 'serveur'
         ? (n.destinataire_key || 'inconnu')
         : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
@@ -261,7 +261,7 @@ export default function NotesClients() {
       )}
 
       {sortedGroups.map(([key, group]) => {
-        const activeNotes = group.notes.filter((n) => !n.annulee && !hiddenIds.has(n.id));
+        const activeNotes = group.notes.filter((n) => !n.annulee && !pairHiddenIds.has(n.id));
         // Only show pairs (notes hidden because they cancel each other), not reset-hidden notes
         const hiddenNotes = group.notes.filter((n) => !n.annulee && pairHiddenIds.has(n.id));
         const annuleesNotes = group.notes.filter((n) => n.annulee);
