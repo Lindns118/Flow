@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getPersonnes, getFiches, getNotes, getHiddenNotes,
-  deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur, getDette
+  deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur, getDette,
+  getBopGlobal, setBopGlobal,
 } from '../db';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -21,6 +22,8 @@ export default function Personne() {
   const [bkInput, setBkInput] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
   const [dette, setDette] = useState(0);
+  const [bopGlobal, setBopGlobalState] = useState(0);
+  const [bopGlobalInput, setBopGlobalInput] = useState('');
 
   const load = () => {
     const personnes = getPersonnes();
@@ -30,6 +33,7 @@ export default function Personne() {
     setNotes(getNotes());
     setHidden(getHiddenNotes());
     setDette(getDette(key));
+    setBopGlobalState(getBopGlobal(key));
   };
 
   useEffect(() => { load(); }, [key]);
@@ -200,6 +204,15 @@ export default function Personne() {
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
 
+    if (bopGlobal !== 0) {
+      y += 8;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(220, 38, 38);
+      doc.text(`BOP total : ${fmt(bopGlobal)} €`, margin, y);
+      doc.setTextColor(0, 0, 0);
+    }
+
     doc.save(`${key}.pdf`);
   };
 
@@ -350,6 +363,29 @@ export default function Personne() {
         </div>
         <div style={{ marginTop: 10, fontWeight: 700, color: '#dc2626' }}>
           Total BOP : {fmt(totalBop)} €
+        </div>
+        <div style={{ marginTop: 10, borderTop: '1px dashed #fca5a5', paddingTop: 10 }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>BOP total (cumulatif) :</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input-field"
+              type="number"
+              placeholder={bopGlobal ? String(bopGlobal) : '0'}
+              value={bopGlobalInput}
+              onChange={(e) => setBopGlobalInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setBopGlobal(key, parseFloat(bopGlobalInput)); setBopGlobalInput(''); load(); } }}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-danger"
+              onClick={() => { setBopGlobal(key, parseFloat(bopGlobalInput)); setBopGlobalInput(''); load(); }}
+            >✓</button>
+          </div>
+          {bopGlobal !== 0 && (
+            <div style={{ marginTop: 6, fontWeight: 700, color: '#dc2626', fontSize: 13 }}>
+              BOP total : {fmt(bopGlobal)} €
+            </div>
+          )}
         </div>
       </div>
 

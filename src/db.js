@@ -21,6 +21,7 @@ export function getAllData() {
     fichesPierre: getFichesPierre(),
     prets: getPrets(),
     dettes: getDettes(),
+    bopGlobaux: getBopGlobaux(),
   };
 }
 
@@ -32,6 +33,7 @@ export function setAllData(data) {
   if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
   if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
   if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
+  if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
 }
 
 // slugify: normalize name to slug
@@ -123,6 +125,31 @@ export function saveDettes(dettes) {
 
 export function getDette(key) {
   return getDettes()[key] || 0;
+}
+
+// --- BOP total global (informational running total, manually entered, no effect on calculations) ---
+export function getBopGlobaux() {
+  try {
+    return JSON.parse(localStorage.getItem('bopGlobaux') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function saveBopGlobaux(m) {
+  localStorage.setItem('bopGlobaux', JSON.stringify(m));
+  scheduleDriveSync();
+}
+
+export function getBopGlobal(key) {
+  return getBopGlobaux()[key] || 0;
+}
+
+export function setBopGlobal(key, val) {
+  const m = getBopGlobaux();
+  const n = Number(val);
+  if (n) m[key] = n; else delete m[key];
+  saveBopGlobaux(m);
 }
 
 // Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
