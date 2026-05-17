@@ -4,13 +4,15 @@ import jsPDF from 'jspdf';
 
 const normName = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
 
-// Compute which hidden notes actually form cancelling pairs
+// Compute which notes form cancelling pairs (hidden or active partner)
 function computePairHiddenIds(notes, hiddenIds) {
-  const hiddenActive = notes.filter((n) => !n.annulee && hiddenIds.has(n.id));
+  const nonAnnulee = notes.filter((n) => !n.annulee);
+  const hiddenActive = nonAnnulee.filter((n) => hiddenIds.has(n.id));
   const result = new Set();
   hiddenActive.forEach((n) => {
     if (result.has(n.id)) return;
-    const pair = hiddenActive.find(
+    // Search among ALL non-annulee notes, not just hidden ones
+    const pair = nonAnnulee.find(
       (m) =>
         m.id !== n.id &&
         !result.has(m.id) &&
