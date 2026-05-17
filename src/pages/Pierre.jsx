@@ -141,19 +141,98 @@ export default function Pierre() {
   const totalFiches = fiches.reduce((a, b) => a + b.montant, 0);
 
   const exportPDF = () => {
-    const doc = new jsPDF();
-    let y = 20;
-    doc.setFontSize(16);
-    doc.text('Fiches Pierre', 14, y);
-    y += 10;
-    doc.setFontSize(10);
-    fiches.forEach((f) => {
-      doc.text(`${fmtDate(f.date)}  ${f.heures}h  ${fmt(f.montant)} €  ${f.notes || ''}`, 14, y);
-      y += 7;
-      if (y > 270) { doc.addPage(); y = 20; }
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const margin = 12;
+    const rowH = 7;
+
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Pierre', margin, 12);
+    doc.setFont(undefined, 'normal');
+
+    let y = 22;
+
+    // Left table: Fiches (Date | Type | H | Montant)
+    const leftX = margin;
+    const leftCols = [
+      { header: 'Date', w: 26 },
+      { header: 'Type', w: 20 },
+      { header: 'H', w: 14 },
+      { header: 'Montant', w: 28 },
+    ]; // 88mm
+
+    // Right table: Notes clients (Client | Date | Montant)
+    const rightX = leftX + leftCols.reduce((a, c) => a + c.w, 0) + 8; // 12+88+8=108
+    const rightCols = [{ header: 'Client', w: 40 }, { header: 'Date', w: 22 }, { header: 'Montant', w: 26 }]; // 88mm
+
+    const drawRow = (startX, cols, cy, cells, bold = false) => {
+      let x = startX;
+      doc.setFont(undefined, bold ? 'bold' : 'normal');
+      doc.setFontSize(bold ? 8.5 : 8);
+      cols.forEach((col, i) => {
+        doc.rect(x, cy, col.w, rowH);
+        const val = cells[i];
+        if (val !== undefined && val !== '') {
+          let txt = String(val);
+          const maxW = col.w - 2;
+          while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
+          doc.text(txt, x + 1.2, cy + rowH - 1.8);
+        }
+        x += col.w;
+      });
+    };
+
+    // Section labels
+    doc.setFontSize(8.5);
+    doc.setFont(undefined, 'bold');
+    doc.text('Fiches', leftX, y - 1);
+    doc.text('Notes clients reçues', rightX, y - 1);
+    doc.setFont(undefined, 'normal');
+
+    // Headers
+    drawRow(leftX, leftCols, y, leftCols.map((c) => c.header), true);
+    drawRow(rightX, rightCols, y, rightCols.map((c) => c.header), true);
+
+    let leftY = y + rowH;
+    let rightY = y + rowH;
+
+    // Fiches rows (all, sorted by date desc)
+    [...fiches].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
+      drawRow(leftX, leftCols, leftY, [
+        fmtDate(f.date),
+        f.type === 'retrait' ? 'Retrait' : 'Salaire',
+        f.type === 'salaire' ? f.heures + 'h' : '',
+        fmt(f.montant) + ' €',
+      ]);
+      leftY += rowH;
     });
-    doc.setFontSize(12);
-    doc.text(`Total: ${fmt(totalFiches)} €`, 14, y);
+    // Fiches total
+    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFiches) + ' €'], true);
+    leftY += rowH;
+
+    // Notes clients rows
+    notesClients.forEach((n) => {
+      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
+      rightY += rowH;
+    });
+    // Notes total
+    if (notesClients.length > 0) {
+      drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotes) + ' €'], true);
+      rightY += rowH;
+    }
+
+    y = Math.max(leftY, rightY) + 8;
+
+    // Grand total
+    const grandTotal = totalFiches + totalNotes;
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Total Général : ${fmt(grandTotal)} €`, margin, y);
+    y += 6;
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'normal');
+    doc.text(`${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) = ${fmt(grandTotal)} €`, margin, y);
+
     doc.save('pierre-fiches.pdf');
   };
 
