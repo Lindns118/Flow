@@ -121,6 +121,21 @@ export function resetAllServeurs() {
     .forEach((p) => resetServeur(p.key));
 }
 
+// Reset Pierre: delete all his fichesPierre + hide his received notes
+export function resetPierre() {
+  localStorage.setItem('fichesPierre', JSON.stringify([]));
+  const notes = getNotes();
+  const hiddenSet = new Set(getHiddenNotes());
+  notes.filter((n) => n.destinataire_key === 'pierre').forEach((n) => hiddenSet.add(n.id));
+  localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
+  scheduleDriveSync();
+}
+
+export function resetTous() {
+  resetAllServeurs();
+  resetPierre();
+}
+
 // --- NoteClient ---
 export function getNotes() {
   try {
