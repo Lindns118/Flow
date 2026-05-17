@@ -62,6 +62,9 @@ export default function Pierre() {
     flash('✓ Pierre réinitialisé');
   };
 
+  const fichesActives = fiches.filter((f) => f.type !== 'bk');
+  const bkFiches = fiches.filter((f) => f.type === 'bk');
+
   // Group by month (exclude bk entries — they're shown in their own section)
   const moisMap = fichesActives.reduce((acc, f) => {
     const m = f.mois || f.date.substring(0, 7);
@@ -140,8 +143,6 @@ export default function Pierre() {
     flash('✓ Note enregistrée');
   };
 
-  const fichesActives = fiches.filter((f) => f.type !== 'bk');
-  const bkFiches = fiches.filter((f) => f.type === 'bk');
   const handleAddBk = () => {
     if (!bkInput) return;
     addFichePierre({ date: new Date().toISOString().slice(0, 10), montantDirect: parseFloat(bkInput), type: 'bk' });
