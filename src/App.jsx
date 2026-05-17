@@ -36,8 +36,7 @@ function LoginPage({ onLogin }) {
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', height: '100vh', gap: 20, background: '#111',
     }}>
-      <h1 style={{ color: '#fff', letterSpacing: 4, fontSize: 28, margin: 0 }}>FLOW</h1>
-      <p style={{ color: '#aaa', margin: 0, fontSize: 14 }}>Salaires &amp; Notes Clients</p>
+      <h1 style={{ color: '#fff', letterSpacing: 4, fontSize: 28, margin: 0 }}>Note Client</h1>
       <button
         onClick={handleLogin}
         disabled={loading}
@@ -128,11 +127,8 @@ function Navbar({ onLogout, onImportHistorique }) {
         </div>
       )}
       <span className="navbar-title" onClick={handleTitleClick}>
-        SALAIRES &amp; NOTES CLIENTS
+        Note Client
       </span>
-      <Link to="/" style={{ color: '#fff', fontSize: 13, opacity: 0.8, textDecoration: 'none', marginLeft: 16, whiteSpace: 'nowrap' }}>
-        ← Accueil
-      </Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {user?.picture && (
           <img src={user.picture} alt="profil" style={{ width: 28, height: 28, borderRadius: '50%' }} />
@@ -150,13 +146,13 @@ function Navbar({ onLogout, onImportHistorique }) {
       </div>
       {showPanel && (
         <div className="hidden-panel">
+          <Link to="/calcul" onClick={() => setShowPanel(false)}>🧮 Calculatrice</Link>
           <Link to="/pierre" onClick={() => setShowPanel(false)}>⭐ Pierre</Link>
           {personnes.map((p) => (
             <Link key={p.key} to={`/personne/${p.key}`} onClick={() => setShowPanel(false)}>
               {p.nom}
             </Link>
           ))}
-          <span onClick={handlePersonnesIconClick}>👥 Notes clients</span>
           <Link to="/prets" onClick={() => setShowPanel(false)}>📦 Prêts</Link>
           <Link to="/anciens-serveurs" onClick={() => setShowPanel(false)}>👴 Anciens serveurs</Link>
           <span onClick={handleImport} style={{ color: '#f59e0b', cursor: 'pointer' }}>
@@ -181,7 +177,8 @@ function AppContent({ onLogout, onImportHistorique }) {
     <BrowserRouter basename="/Flow">
       <Navbar onLogout={onLogout} onImportHistorique={onImportHistorique} />
       <Routes>
-        <Route path="/" element={<Calculator />} />
+        <Route path="/" element={<NotesClients />} />
+        <Route path="/calcul" element={<Calculator />} />
         <Route path="/personne/:key" element={<Personne />} />
         <Route path="/pierre" element={<Pierre />} />
         <Route path="/notes-clients" element={<NotesClients />} />
