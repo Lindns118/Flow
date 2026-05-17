@@ -124,7 +124,7 @@ function Navbar({ onLogout }) {
 
 function AppContent({ onLogout }) {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/Flow">
       <Navbar onLogout={onLogout} />
       <Routes>
         <Route path="/" element={<Calculator />} />
