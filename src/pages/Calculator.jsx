@@ -10,9 +10,9 @@ export default function Calculator() {
   const [baseValues, setBaseValues] = useState(['', '', '']);
   const [diviseur, setDiviseur] = useState('');
   const [personRows, setPersonRows] = useState([
-    { prenom: '', date: today(), valeur: '' },
-    { prenom: '', date: today(), valeur: '' },
-    { prenom: '', date: today(), valeur: '' },
+    { key: '', nom: '', date: today(), valeur: '', isNew: false },
+    { key: '', nom: '', date: today(), valeur: '', isNew: false },
+    { key: '', nom: '', date: today(), valeur: '', isNew: false },
   ]);
   const [noteLines, setNoteLines] = useState([
     { personne: '', montant: '', destinataire: '', date: today() },
@@ -41,11 +41,12 @@ export default function Calculator() {
 
   const handleSaveFiche = (i) => {
     const p = personRows[i];
-    if (!p.prenom || !p.date) return;
-    addPersonne(p.prenom);
-    addFiche(slugify(p.prenom), p.prenom, p.date, personneResults[i], 'salaire');
+    const nom = p.isNew ? p.nom : p.nom;
+    if (!nom || !p.date) return;
+    const personne = addPersonne(nom);
+    addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
     setPersonnesList(getPersonnes());
-    flashMsg(`✓ Sauvegardé: ${p.prenom}`);
+    flashMsg(`✓ Sauvegardé: ${personne.nom}`);
   };
 
   const handleSaveNote = (i) => {
@@ -72,12 +73,17 @@ export default function Calculator() {
   };
 
   const addPersonRow = () => {
-    setPersonRows([...personRows, { prenom: '', date: today(), valeur: '' }]);
+    setPersonRows([...personRows, { key: '', nom: '', date: today(), valeur: '', isNew: false }]);
   };
 
   const removePersonRow = (i) => {
     setPersonRows(personRows.filter((_, idx) => idx !== i));
   };
+
+  const serverOptions = [
+    { key: 'pierre', nom: 'Pierre' },
+    ...personnesList.filter((p) => p.key !== 'pierre'),
+  ];
 
   const updateNote = (i, field, val) => {
     const updated = [...noteLines];
@@ -166,9 +172,47 @@ export default function Calculator() {
             <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: i < personRows.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 80px 36px 28px', gap: 8, alignItems: 'end' }}>
                 <div>
-                  <div className="label-sm">Prénom</div>
-                  <input className="input-field" placeholder="Prénom" value={p.prenom}
-                    onChange={(e) => updatePersonRow(i, 'prenom', e.target.value)} />
+                  <div className="label-sm">Serveur</div>
+                  {p.isNew ? (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input
+                        className="input-field"
+                        placeholder="Nouveau nom..."
+                        value={p.nom}
+                        autoFocus
+                        onChange={(e) => {
+                          const updated = [...personRows];
+                          updated[i] = { ...updated[i], nom: e.target.value, key: slugify(e.target.value) };
+                          setPersonRows(updated);
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 6, padding: '0 6px', cursor: 'pointer', fontSize: 12, color: '#6b7280' }}
+                        onClick={() => { const u = [...personRows]; u[i] = { ...u[i], isNew: false, nom: '', key: '' }; setPersonRows(u); }}
+                        title="Annuler"
+                      >◀</button>
+                    </div>
+                  ) : (
+                    <select
+                      className="input-field"
+                      value={p.key}
+                      onChange={(e) => {
+                        if (e.target.value === '__nouveau__') {
+                          const u = [...personRows]; u[i] = { ...u[i], isNew: true, key: '', nom: '' }; setPersonRows(u);
+                        } else {
+                          const found = serverOptions.find((s) => s.key === e.target.value);
+                          const u = [...personRows]; u[i] = { ...u[i], key: e.target.value, nom: found?.nom || '' }; setPersonRows(u);
+                        }
+                      }}
+                    >
+                      <option value="">— Choisir —</option>
+                      {serverOptions.map((s) => (
+                        <option key={s.key} value={s.key}>{s.nom}</option>
+                      ))}
+                      <option value="__nouveau__">+ Nouveau serveur...</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <div className="label-sm">Date</div>
@@ -184,6 +228,7 @@ export default function Calculator() {
                 <button className="btn btn-danger" style={{ padding: '8px 4px', fontSize: 12 }} onClick={() => removePersonRow(i)} title="Supprimer">✕</button>
               </div>
               <div style={{ marginTop: 6, textAlign: 'right', fontSize: 13, color: '#6b7280' }}>
+                {p.nom && <strong style={{ color: '#374151', marginRight: 6 }}>{p.nom}</strong>}
                 {fmt(parseFloat(p.valeur) || 0)} × H({fmt(H)}) = <strong>{fmt(personneResults[i])}</strong>
               </div>
             </div>
