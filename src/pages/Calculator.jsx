@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { addFiche, addPersonne, addNote, getPersonnes, addFichePierre, slugify } from '../db';
+import { addFiche, addPersonne, addNote, getPersonnes, addFichePierre, slugify, addPret } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,6 +22,8 @@ export default function Calculator() {
   const [pierreDate, setPierreDate] = useState(today());
   const [personnesList, setPersonnesList] = useState([]);
   const [saveMsg, setSaveMsg] = useState('');
+  const [pretForm, setPretForm] = useState({ type: 'emprunt', produit: '', nombre: '1', lieu: '', date: today() });
+  const [sessionPrets, setSessionPrets] = useState([]);
 
   useEffect(() => {
     setPersonnesList(getPersonnes());
@@ -38,6 +40,14 @@ export default function Calculator() {
   const totalPersonnes = personneResults.reduce((a, b) => a + b, 0);
 
   const flashMsg = (msg) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2500); };
+
+  const handleSavePret = () => {
+    if (!pretForm.produit || !pretForm.lieu) return;
+    addPret(pretForm);
+    setSessionPrets((prev) => [{ ...pretForm, id: Date.now() }, ...prev]);
+    flashMsg(`✓ ${pretForm.type === 'emprunt' ? 'Emprunt' : 'Prêt'} enregistré`);
+    setPretForm({ type: pretForm.type, produit: '', nombre: '1', lieu: '', date: today() });
+  };
 
   const handleSaveFiche = (i) => {
     const p = personRows[i];
@@ -316,6 +326,60 @@ export default function Calculator() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Emprunt / Prêt */}
+      <div className="card">
+        <div className="card-title">Emprunt / Prêt</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {['emprunt', 'pret'].map((t) => (
+            <button
+              key={t}
+              className={pretForm.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
+              style={{ fontSize: 13, padding: '6px 16px' }}
+              onClick={() => setPretForm({ ...pretForm, type: t })}
+            >
+              {t === 'emprunt' ? 'Emprunt' : 'Prêt'}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Produit</div>
+            <input className="input-field" placeholder="Nom de l'objet" value={pretForm.produit}
+              onChange={(e) => setPretForm({ ...pretForm, produit: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Nombre</div>
+            <input className="input-field" type="number" min="1" value={pretForm.nombre}
+              onChange={(e) => setPretForm({ ...pretForm, nombre: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Lieu / Personne</div>
+            <input className="input-field" placeholder="Où / Qui" value={pretForm.lieu}
+              onChange={(e) => setPretForm({ ...pretForm, lieu: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={pretForm.date}
+              onChange={(e) => setPretForm({ ...pretForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSavePret} title="Sauvegarder">💾</button>
+        </div>
+
+        {sessionPrets.length > 0 && (
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionPrets.map((p) => (
+              <div key={p.id} className="nota-row">
+                <span style={{ fontSize: 12, color: p.type === 'emprunt' ? '#dc2626' : '#16a34a', fontWeight: 600, marginRight: 8 }}>
+                  {p.type === 'emprunt' ? 'EMPRUNT' : 'PRÊT'}
+                </span>
+                <span style={{ flex: 1, fontSize: 13 }}>{p.produit} {p.nombre > 1 ? `× ${p.nombre}` : ''} — {p.lieu}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

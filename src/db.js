@@ -19,6 +19,7 @@ export function getAllData() {
     notes: getNotes(),
     hiddenNotes: getHiddenNotes(),
     fichesPierre: getFichesPierre(),
+    prets: getPrets(),
   };
 }
 
@@ -28,6 +29,7 @@ export function setAllData(data) {
   if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
   if (data?.hiddenNotes !== undefined) localStorage.setItem('hiddenNotes', JSON.stringify(data.hiddenNotes));
   if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
+  if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
 }
 
 // slugify: normalize name to slug
@@ -222,4 +224,38 @@ export function updateFichePierre(id, { date, heures, notes }) {
   fiche.mois = date.substring(0, 7);
   fiche.notes = notes || '';
   saveFichesPierre(fiches);
+}
+
+// --- Prêts / Emprunts ---
+export function getPrets() {
+  try {
+    return JSON.parse(localStorage.getItem('prets') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+export function savePrets(prets) {
+  localStorage.setItem('prets', JSON.stringify(prets));
+  scheduleDriveSync();
+}
+
+export function addPret({ type, produit, nombre, lieu, date }) {
+  const prets = getPrets();
+  const id = String(Date.now() + Math.random());
+  prets.push({ id, type, produit, nombre: Number(nombre) || 1, lieu, date, clos: false });
+  savePrets(prets);
+  return id;
+}
+
+export function togglePretClos(id) {
+  const prets = getPrets();
+  const pret = prets.find((p) => p.id === id);
+  if (!pret) return;
+  pret.clos = !pret.clos;
+  savePrets(prets);
+}
+
+export function deletePret(id) {
+  savePrets(getPrets().filter((p) => p.id !== id));
 }
