@@ -53,6 +53,12 @@ export default function Calculator() {
     const p = personRows[i];
     const nom = p.isNew ? p.nom : p.nom;
     if (!nom || !p.date) return;
+    // Pierre a son propre système de fiches — ne pas l'ajouter aux serveurs normaux
+    if (p.key === 'pierre' || slugify(nom) === 'pierre') {
+      addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
+      flashMsg('✓ Fiche Pierre sauvegardée');
+      return;
+    }
     const personne = addPersonne(nom);
     addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
     setPersonnesList(getPersonnes());
@@ -116,7 +122,7 @@ export default function Calculator() {
 
   const destOptions = [
     { key: 'pierre', nom: 'Pierre' },
-    ...personnesList,
+    ...personnesList.filter((p) => p.key !== 'pierre'),
   ];
 
   return (
