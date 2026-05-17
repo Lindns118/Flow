@@ -20,6 +20,7 @@ export function getAllData() {
     hiddenNotes: getHiddenNotes(),
     fichesPierre: getFichesPierre(),
     prets: getPrets(),
+    dettes: getDettes(),
   };
 }
 
@@ -30,6 +31,7 @@ export function setAllData(data) {
   if (data?.hiddenNotes !== undefined) localStorage.setItem('hiddenNotes', JSON.stringify(data.hiddenNotes));
   if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
   if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
+  if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
 }
 
 // slugify: normalize name to slug
@@ -105,8 +107,45 @@ export function deletePersonne(key) {
   savePersonnes(personnes);
 }
 
+// --- Dettes (carry-over balance between reset periods) ---
+export function getDettes() {
+  try {
+    return JSON.parse(localStorage.getItem('dettes') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function saveDettes(dettes) {
+  localStorage.setItem('dettes', JSON.stringify(dettes));
+  scheduleDriveSync();
+}
+
+export function getDette(key) {
+  return getDettes()[key] || 0;
+}
+
 // Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
+// If the effective total (current + previous debt) is negative, carry it over to next period.
 export function resetServeur(key) {
+  const allFiches = getFiches().filter((f) => f.personne_key === key);
+  const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
+  const totalBop = allFiches.filter((f) => f.type === 'bop').reduce((a, b) => a + b.montant, 0);
+  const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
+  const hidden = getHiddenNotes();
+  const totalNotes = getNotes()
+    .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id))
+    .reduce((a, b) => a + b.montant, 0);
+  const effectiveTotal = totalSalaires + totalNotes - totalBop - totalBk + getDette(key);
+
+  const dettes = getDettes();
+  if (effectiveTotal < 0) {
+    dettes[key] = effectiveTotal;
+  } else {
+    delete dettes[key];
+  }
+  saveDettes(dettes);
+
   deletePersonneData(key);
   const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
@@ -122,7 +161,25 @@ export function resetAllServeurs() {
 }
 
 // Reset Pierre: delete all his fichesPierre + hide his received notes
+// Carries over negative balance to next period.
 export function resetPierre() {
+  const allFiches = getFichesPierre();
+  const totalFiches = allFiches.filter((f) => f.type !== 'bk').reduce((a, b) => a + b.montant, 0);
+  const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
+  const hidden = getHiddenNotes();
+  const totalNotes = getNotes()
+    .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id))
+    .reduce((a, b) => a + b.montant, 0);
+  const effectiveTotal = totalFiches + totalNotes - totalBk + getDette('pierre');
+
+  const dettes = getDettes();
+  if (effectiveTotal < 0) {
+    dettes['pierre'] = effectiveTotal;
+  } else {
+    delete dettes['pierre'];
+  }
+  saveDettes(dettes);
+
   localStorage.setItem('fichesPierre', JSON.stringify([]));
   const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
@@ -220,11 +277,13 @@ export function saveFichesPierre(fiches) {
   scheduleDriveSync();
 }
 
-// type: 'salaire' (heures × 10) | 'retrait' (montant direct)
+// type: 'salaire' (heures × 10) | 'retrait' (montant direct, négatif) | 'bk' (montant direct, positif, déduit du total)
 export function addFichePierre({ date, heures, montantDirect, notes, type = 'salaire' }) {
   const fiches = getFichesPierre();
   const mois = date.substring(0, 7);
-  const montant = type === 'retrait' ? -Math.abs(Number(montantDirect)) : Number(heures) * 10;
+  const montant = type === 'retrait' ? -Math.abs(Number(montantDirect))
+    : type === 'bk' ? Math.abs(Number(montantDirect))
+    : Number(heures) * 10;
   const id = String(Date.now() + Math.random());
   fiches.push({
     id, date, mois, type,
@@ -256,6 +315,9 @@ export function updateFichePierre(id, { date, heures, montantDirect, notes, type
   fiche.notes = notes || '';
   if (fiche.type === 'retrait') {
     fiche.montant = -Math.abs(Number(montantDirect));
+    fiche.heures = 0;
+  } else if (fiche.type === 'bk') {
+    fiche.montant = Math.abs(Number(montantDirect));
     fiche.heures = 0;
   } else {
     fiche.heures = Number(heures);

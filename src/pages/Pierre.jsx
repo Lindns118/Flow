@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
-  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes
+  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette
 } from '../db';
 import jsPDF from 'jspdf';
 
@@ -32,6 +32,8 @@ export default function Pierre() {
   const [msg, setMsg] = useState('');
   const [confirmDeleteMois, setConfirmDeleteMois] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [bkInput, setBkInput] = useState('');
+  const [dette, setDette] = useState(0);
 
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
@@ -39,6 +41,7 @@ export default function Pierre() {
     const hidden = getHiddenNotes();
     setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id)));
     setPersonnesList(getPersonnes());
+    setDette(getDette('pierre'));
     // Auto-select current month if nothing selected
     setSelectedMois((prev) => {
       if (prev) return prev;
@@ -59,8 +62,8 @@ export default function Pierre() {
     flash('✓ Pierre réinitialisé');
   };
 
-  // Group by month
-  const moisMap = fiches.reduce((acc, f) => {
+  // Group by month (exclude bk entries — they're shown in their own section)
+  const moisMap = fichesActives.reduce((acc, f) => {
     const m = f.mois || f.date.substring(0, 7);
     if (!acc[m]) acc[m] = { total: 0, fiches: [] };
     acc[m].total += f.montant;
@@ -137,8 +140,19 @@ export default function Pierre() {
     flash('✓ Note enregistrée');
   };
 
+  const fichesActives = fiches.filter((f) => f.type !== 'bk');
+  const bkFiches = fiches.filter((f) => f.type === 'bk');
+  const handleAddBk = () => {
+    if (!bkInput) return;
+    addFichePierre({ date: new Date().toISOString().slice(0, 10), montantDirect: parseFloat(bkInput), type: 'bk' });
+    setBkInput('');
+    load();
+  };
+
+  const totalFiches = fichesActives.reduce((a, b) => a + b.montant, 0);
+  const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const totalNotes = notesClients.reduce((a, b) => a + b.montant, 0);
-  const totalFiches = fiches.reduce((a, b) => a + b.montant, 0);
+  const totalGeneral = totalFiches + totalNotes - totalBk + dette;
 
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
@@ -196,8 +210,8 @@ export default function Pierre() {
     let leftY = y + rowH;
     let rightY = y + rowH;
 
-    // Fiches rows (all, sorted by date desc)
-    [...fiches].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
+    // Fiches rows (salaire/retrait only, sorted by date desc)
+    [...fichesActives].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
       drawRow(leftX, leftCols, leftY, [
         fmtDate(f.date),
         f.type === 'retrait' ? 'Retrait' : 'Salaire',
@@ -223,15 +237,36 @@ export default function Pierre() {
 
     y = Math.max(leftY, rightY) + 8;
 
+    // BK section
+    const bkSectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
+    if (bkFiches.length > 0) {
+      doc.setFontSize(8.5);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(234, 88, 12);
+      doc.text('BK (déduit du total)', margin, y - 1);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      drawRow(margin, bkSectionCols, y, bkSectionCols.map((c) => c.header), true);
+      y += rowH;
+      bkFiches.forEach((f) => {
+        drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']);
+        y += rowH;
+      });
+      drawRow(margin, bkSectionCols, y, ['Total BK', fmt(totalBk) + ' €'], true);
+      y += rowH + 8;
+    }
+
     // Grand total
-    const grandTotal = totalFiches + totalNotes;
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.text(`Total Général : ${fmt(grandTotal)} €`, margin, y);
+    doc.text(`Total Général : ${fmt(totalGeneral)} €`, margin, y);
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    doc.text(`${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) = ${fmt(grandTotal)} €`, margin, y);
+    let formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) − ${fmt(totalBk)} (BK)`;
+    if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
+    formula += ` = ${fmt(totalGeneral)} €`;
+    doc.text(formula, margin, y);
 
     doc.save('pierre-fiches.pdf');
   };
@@ -242,7 +277,7 @@ export default function Pierre() {
         <div className="modal-overlay">
           <div className="modal-box">
             <h3>Réinitialiser Pierre</h3>
-            <p>Toutes les fiches de Pierre seront supprimées. Les notes resteront visibles dans Notes Clients.</p>
+            <p>Toutes les fiches de Pierre seront supprimées. Les notes resteront visibles dans Notes Clients. Si le total est négatif, la dette sera reportée à la prochaine période.</p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
               <button className="btn btn-danger" onClick={handleReset}>Réinitialiser</button>
@@ -267,6 +302,12 @@ export default function Pierre() {
       {msg && (
         <div style={{ background: '#d1fae5', color: '#065f46', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
           {msg}
+        </div>
+      )}
+
+      {dette < 0 && (
+        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626' }}>
+          Report période précédente : {fmt(dette)} €
         </div>
       )}
 
@@ -405,9 +446,9 @@ export default function Pierre() {
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>{heures}h × 10 = <strong>{fmt(parseFloat(heures) * 10)} €</strong></div>
           )}
           <button className="btn btn-primary" onClick={handleSaveFiche} style={{ width: '100%' }}>Enregistrer</button>
-          {fiches.length > 0 && (
+          {fichesActives.length > 0 && (
             <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
-              Total général : {fmt(totalFiches)} €
+              Total fiches : {fmt(totalFiches)} €
             </div>
           )}
         </div>
@@ -457,6 +498,43 @@ export default function Pierre() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* BK */}
+      <div className="card" style={{ borderLeft: '4px solid #ea580c' }}>
+        <div className="card-title" style={{ color: '#ea580c' }}>Pour BK</div>
+        {bkFiches.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée</div>}
+        {bkFiches.map((f) => (
+          <div key={f.id} className="row-hover nota-row">
+            <span style={{ flex: 1, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
+            <span style={{ fontWeight: 600, color: '#ea580c' }}>{fmt(f.montant)} €</span>
+            <button className="delete-btn" onClick={() => handleDelete(f.id)}>✕</button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <input
+            className="input-field"
+            type="number"
+            placeholder="Montant BK..."
+            value={bkInput}
+            onChange={(e) => setBkInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddBk()}
+            style={{ flex: 1 }}
+          />
+          <button className="btn" style={{ background: '#ea580c', color: 'white' }} onClick={handleAddBk}>+</button>
+        </div>
+        <div style={{ marginTop: 10, fontWeight: 700, color: '#ea580c' }}>
+          Total BK : {fmt(totalBk)} €
+        </div>
+      </div>
+
+      {/* Total Général */}
+      <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
+        Total Général : {fmt(totalGeneral)} €
+        <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+          {fmt(totalFiches)} (fiches) + {fmt(totalNotes)} (notes) − {fmt(totalBk)} (BK)
+          {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>
     </div>

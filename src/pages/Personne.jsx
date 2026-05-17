@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getPersonnes, getFiches, getNotes, getHiddenNotes,
-  deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur
+  deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur, getDette
 } from '../db';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -20,6 +20,7 @@ export default function Personne() {
   const [bopInput, setBopInput] = useState('');
   const [bkInput, setBkInput] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [dette, setDette] = useState(0);
 
   const load = () => {
     const personnes = getPersonnes();
@@ -28,6 +29,7 @@ export default function Personne() {
     setFiches(getFiches());
     setNotes(getNotes());
     setHidden(getHiddenNotes());
+    setDette(getDette(key));
   };
 
   useEffect(() => { load(); }, [key]);
@@ -42,7 +44,7 @@ export default function Personne() {
   const totalNotes = notesRecues.filter((n) => !n.annulee).reduce((a, b) => a + b.montant, 0);
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
-  const totalGeneral = totalSalaires + totalNotes - totalBop - totalBk;
+  const totalGeneral = totalSalaires + totalNotes - totalBop - totalBk + dette;
 
   const handleReset = () => {
     resetServeur(key);
@@ -193,10 +195,10 @@ export default function Personne() {
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    doc.text(
-      `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) − ${fmt(totalBop)} (BOP) − ${fmt(totalBk)} (BK) = ${fmt(totalGeneral)} €`,
-      margin, y
-    );
+    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) − ${fmt(totalBop)} (BOP) − ${fmt(totalBk)} (BK)`;
+    if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
+    formula += ` = ${fmt(totalGeneral)} €`;
+    doc.text(formula, margin, y);
 
     doc.save(`${key}.pdf`);
   };
@@ -257,12 +259,18 @@ export default function Personne() {
         <div className="modal-overlay">
           <div className="modal-box">
             <h3>Réinitialiser {personne.nom}</h3>
-            <p>Toutes les fiches (salaires, BOP, BK) seront supprimées. Les notes resteront visibles dans Notes Clients mais plus sur cette fiche.</p>
+            <p>Toutes les fiches (salaires, BOP, BK) seront supprimées. Les notes resteront visibles dans Notes Clients mais plus sur cette fiche. Si le total est négatif, la dette sera reportée à la prochaine période.</p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
               <button className="btn btn-danger" onClick={handleReset}>Réinitialiser</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {dette < 0 && (
+        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626' }}>
+          Report période précédente : {fmt(dette)} €
         </div>
       )}
 
@@ -378,6 +386,7 @@ export default function Personne() {
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
           {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes) − {fmt(totalBop)} (BOP) − {fmt(totalBk)} (BK)
+          {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>
     </div>
