@@ -22,6 +22,8 @@ export function getAllData() {
     prets: getPrets(),
     dettes: getDettes(),
     bopGlobaux: getBopGlobaux(),
+    ancienServeurs: getAncienServeurs(),
+    ancienServeurEntries: getAncienServeurEntries(),
   };
 }
 
@@ -34,6 +36,8 @@ export function setAllData(data) {
   if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
   if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
   if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
+  if (data?.ancienServeurs !== undefined) localStorage.setItem('ancienServeurs', JSON.stringify(data.ancienServeurs));
+  if (data?.ancienServeurEntries !== undefined) localStorage.setItem('ancienServeurEntries', JSON.stringify(data.ancienServeurEntries));
 }
 
 // slugify: normalize name to slug
@@ -395,4 +399,46 @@ export function togglePretClos(id) {
 
 export function deletePret(id) {
   savePrets(getPrets().filter((p) => p.id !== id));
+}
+
+// --- Anciens Serveurs ---
+export function getAncienServeurs() {
+  try { return JSON.parse(localStorage.getItem('ancienServeurs') || '[]'); } catch { return []; }
+}
+
+export function saveAncienServeurs(list) {
+  localStorage.setItem('ancienServeurs', JSON.stringify(list));
+  scheduleDriveSync();
+}
+
+export function addAncienServeur(nom) {
+  const list = getAncienServeurs();
+  const key = slugify(nom);
+  if (list.find((s) => s.key === key)) return;
+  list.push({ id: String(Date.now()), nom, key });
+  saveAncienServeurs(list);
+}
+
+export function deleteAncienServeur(key) {
+  saveAncienServeurs(getAncienServeurs().filter((s) => s.key !== key));
+  saveAncienServeurEntries(getAncienServeurEntries().filter((e) => e.serveur_key !== key));
+}
+
+export function getAncienServeurEntries() {
+  try { return JSON.parse(localStorage.getItem('ancienServeurEntries') || '[]'); } catch { return []; }
+}
+
+export function saveAncienServeurEntries(entries) {
+  localStorage.setItem('ancienServeurEntries', JSON.stringify(entries));
+  scheduleDriveSync();
+}
+
+export function addAncienServeurEntry(serveur_key, montant, date) {
+  const entries = getAncienServeurEntries();
+  entries.push({ id: String(Date.now() + Math.random()), serveur_key, montant: Number(montant), date });
+  saveAncienServeurEntries(entries);
+}
+
+export function deleteAncienServeurEntry(id) {
+  saveAncienServeurEntries(getAncienServeurEntries().filter((e) => e.id !== id));
 }
