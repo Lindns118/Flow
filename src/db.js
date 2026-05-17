@@ -133,7 +133,6 @@ export function resetPierre() {
 
 export function resetTous() {
   resetAllServeurs();
-  resetPierre();
 }
 
 // --- NoteClient ---

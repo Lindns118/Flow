@@ -117,7 +117,7 @@ function Navbar({ onLogout, onImportHistorique }) {
         <div className="modal-overlay">
           <div className="modal-box">
             <h3>Réinitialiser tous</h3>
-            <p>Supprimer toutes les fiches (tous les serveurs + Pierre) et masquer leurs notes de leurs fiches ? Les notes resteront visibles dans Notes Clients.</p>
+            <p>Supprimer toutes les fiches de tous les serveurs (sauf Pierre) et masquer leurs notes de leurs fiches ? Les notes resteront visibles dans Notes Clients.</p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
               <button className="btn btn-danger" onClick={handleResetTous}>Réinitialiser</button>
