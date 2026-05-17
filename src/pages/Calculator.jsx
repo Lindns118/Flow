@@ -124,8 +124,47 @@ export default function Calculator() {
     ...personnesList.filter((p) => p.key !== 'pierre'),
   ];
 
+  const allServers = [
+    { key: 'pierre', nom: 'Pierre' },
+    ...personnesList.filter((p) => p.key !== 'pierre'),
+  ];
+
   return (
     <div className="page-container">
+      {/* Sticky top bar: back + servers */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: '#fff', borderBottom: '1px solid #e5e7eb',
+        margin: '0 -16px 16px', padding: '8px 16px',
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      }}>
+        <a
+          href="/Flow/"
+          style={{
+            fontSize: 13, color: '#6b7280', textDecoration: 'none',
+            padding: '4px 10px', borderRadius: 6, border: '1px solid #d1d5db',
+            whiteSpace: 'nowrap', fontWeight: 600,
+          }}
+        >← Accueil</a>
+        <div style={{ width: 1, height: 20, background: '#e5e7eb', flexShrink: 0 }} />
+        {allServers.map((s) => (
+          <a
+            key={s.key}
+            href={s.key === 'pierre' ? '/Flow/pierre' : `/Flow/personne/${s.key}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              fontSize: 13, fontWeight: 600, textDecoration: 'none',
+              padding: '4px 12px', borderRadius: 20,
+              background: '#eff6ff', color: '#2563eb',
+              border: '1px solid #bfdbfe', whiteSpace: 'nowrap',
+            }}
+          >
+            {s.nom}
+          </a>
+        ))}
+      </div>
+
       {saveMsg && (
         <div style={{ background: '#d1fae5', color: '#065f46', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
           {saveMsg}
