@@ -11,7 +11,7 @@ import AncienServeurs from './pages/AncienServeurs';
 import AncienServeur from './pages/AncienServeur';
 import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
-import { loadDataFromDrive, saveDataToDrive } from './googleDrive';
+import { loadDataFromDrive, saveDataToDrive, exportNotesToDrive, shouldExport } from './googleDrive';
 import { historicalNotes } from './historicalNotes';
 
 function LoginPage({ onLogin }) {
@@ -195,9 +195,21 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [exportToast, setExportToast] = useState('');
 
   const setupDriveSync = () => {
     setDriveSyncCallback(() => saveDataToDrive(getAllData()));
+  };
+
+  const runScheduledExport = async () => {
+    if (!shouldExport()) return;
+    try {
+      await exportNotesToDrive(getAllData());
+      setExportToast('✓ Sauvegarde Drive effectuée');
+      setTimeout(() => setExportToast(''), 5000);
+    } catch {
+      // silent fail — will retry next session
+    }
   };
 
   const loadFromDrive = async () => {
@@ -215,6 +227,7 @@ function App() {
         if (restored) {
           await loadFromDrive();
           setSignedIn(true);
+          runScheduledExport();
         }
       }
     });
@@ -223,6 +236,7 @@ function App() {
   const handleLogin = async () => {
     await loadFromDrive();
     setSignedIn(true);
+    runScheduledExport();
   };
 
   const handleLogout = () => {
@@ -243,7 +257,21 @@ function App() {
     saveDataToDrive(getAllData());
   };
 
-  return <AppContent onLogout={handleLogout} onImportHistorique={handleImportHistorique} />;
+  return (
+    <>
+      {exportToast && (
+        <div style={{
+          position: 'fixed', bottom: 20, right: 20, zIndex: 9999,
+          background: '#10b981', color: '#fff', borderRadius: 8,
+          padding: '10px 18px', fontSize: 14, fontWeight: 600,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          {exportToast}
+        </div>
+      )}
+      <AppContent onLogout={handleLogout} onImportHistorique={handleImportHistorique} />
+    </>
+  );
 }
 
 export default App;

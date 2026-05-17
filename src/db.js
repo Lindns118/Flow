@@ -470,7 +470,7 @@ export function hideMatchingPairs() {
   });
 
   if (toHide.size > 0) {
-    const newHidden = [...new Set([...getHiddenNotes(), ...toHide])];
+    const newHidden = [...new Set([...hidden, ...toHide])];
     localStorage.setItem('hiddenNotes', JSON.stringify(newHidden));
     scheduleDriveSync();
   }

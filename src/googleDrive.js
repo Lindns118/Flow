@@ -1,6 +1,9 @@
 import { getToken } from './googleAuth';
 
 const FILE_NAME = 'flow-data.json';
+const EXPORT_FILE_NAME = 'flow-notes-backup.json';
+const LAST_EXPORT_KEY = 'lastNoteExport';
+const EXPORT_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 
@@ -22,6 +25,46 @@ export async function loadDataFromDrive() {
   });
   if (!res.ok) return null;
   return res.json();
+}
+
+async function findExportFileId() {
+  const q = encodeURIComponent(`name='${EXPORT_FILE_NAME}' and trashed=false`);
+  const res = await fetch(`${DRIVE_API}/files?q=${q}&fields=files(id)`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
+
+export function shouldExport() {
+  const last = parseInt(localStorage.getItem(LAST_EXPORT_KEY) || '0');
+  return Date.now() - last >= EXPORT_INTERVAL_MS;
+}
+
+export async function exportNotesToDrive(data) {
+  const body = JSON.stringify(data);
+  const fileId = await findExportFileId();
+
+  if (fileId) {
+    await fetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body,
+    });
+  } else {
+    const metadata = JSON.stringify({ name: EXPORT_FILE_NAME });
+    const form = new FormData();
+    form.append('metadata', new Blob([metadata], { type: 'application/json' }));
+    form.append('file', new Blob([body], { type: 'application/json' }));
+    await fetch(`${UPLOAD_API}/files?uploadType=multipart`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: form,
+    });
+  }
+
+  localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
 }
 
 export async function saveDataToDrive(data) {

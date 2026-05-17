@@ -82,15 +82,18 @@ export default function NotesClients() {
   };
 
   const handleSaveEdit = () => {
+    const montant = parseFloat(editData.montant);
+    if (isNaN(montant)) return;
     const allNotes = getNotes();
     const note = allNotes.find((n) => n.id === editId);
     if (note) {
       note.personne = editData.personne;
-      note.montant = parseFloat(editData.montant);
+      note.montant = montant;
       note.date = editData.date;
       saveNotes(allNotes);
     }
     setEditId(null);
+    setEditData({});
     load();
   };
 
@@ -288,7 +291,7 @@ export default function NotesClients() {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-primary" onClick={handleSaveEdit}>✓</button>
-                  <button className="btn btn-secondary" onClick={() => setEditId(null)}>Annuler</button>
+                  <button className="btn btn-secondary" onClick={() => { setEditId(null); setEditData({}); }}>Annuler</button>
                 </div>
               </div>
             ) : (

@@ -1,7 +1,7 @@
 const CLIENT_ID = '112387534657-dp9jk1uaqrrch1t0n7o9t118kivtjj72.apps.googleusercontent.com';
 const ALLOWED_EMAIL = 'francois.lecrenier@gmail.com';
 
-const SCOPES = 'https://www.googleapis.com/auth/drive.appdata email profile';
+const SCOPES = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file email profile';
 const TOKEN_KEY = 'gToken';
 const EXPIRY_KEY = 'gTokenExpiry';
 
