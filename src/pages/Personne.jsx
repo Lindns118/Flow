@@ -199,7 +199,7 @@ export default function Personne() {
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) − ${fmt(totalBop)} (BOP) − ${fmt(totalBk)} (BK)`;
+    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) - ${fmt(totalBop)} (BOP) - ${fmt(totalBk)} (BK)`;
     if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
@@ -421,7 +421,7 @@ export default function Personne() {
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes) − {fmt(totalBop)} (BOP) − {fmt(totalBk)} (BK)
+          {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes) - {fmt(totalBop)} (BOP) - {fmt(totalBk)} (BK)
           {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>
