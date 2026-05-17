@@ -171,8 +171,8 @@ export function resetServeur(key) {
   }
   saveDettes(dettes);
 
-  // Delete salaires + BK, but keep BOP entries (they persist across resets)
-  saveFiches(getFiches().filter((f) => !(f.personne_key === key && f.type !== 'bop')));
+  // Delete all fiches (salaires, BK, BOP) — bopGlobal cumul persists separately
+  deletePersonneData(key);
   const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
   notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
