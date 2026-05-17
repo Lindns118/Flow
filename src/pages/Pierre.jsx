@@ -18,8 +18,10 @@ const fmtMois = (m) => {
 export default function Pierre() {
   const [fiches, setFiches] = useState([]);
   const [selectedMois, setSelectedMois] = useState(null);
+  const [ficheType, setFicheType] = useState('salaire');
   const [date, setDate] = useState(today());
   const [heures, setHeures] = useState('');
+  const [montantRetrait, setMontantRetrait] = useState('');
   const [notes, setNotes] = useState('');
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
@@ -69,9 +71,12 @@ export default function Pierre() {
   const fichesOfMois = selectedMois ? (moisMap[selectedMois]?.fiches || []) : [];
 
   const handleSaveFiche = () => {
-    if (!heures || !date) return;
-    addFichePierre({ date, heures: parseFloat(heures), notes });
+    if (!date) return;
+    if (ficheType === 'salaire' && !heures) return;
+    if (ficheType === 'retrait' && !montantRetrait) return;
+    addFichePierre({ date, heures: parseFloat(heures) || 0, montantDirect: parseFloat(montantRetrait) || 0, notes, type: ficheType });
     setHeures('');
+    setMontantRetrait('');
     setNotes('');
     setSelectedMois(date.substring(0, 7));
     load();
@@ -93,11 +98,23 @@ export default function Pierre() {
 
   const handleEdit = (f) => {
     setEditId(f.id);
-    setEditData({ date: f.date, heures: String(f.heures), notes: f.notes || '' });
+    setEditData({
+      date: f.date,
+      heures: String(f.heures || ''),
+      montantDirect: String(f.type === 'retrait' ? f.montant : ''),
+      notes: f.notes || '',
+      type: f.type || 'salaire',
+    });
   };
 
   const handleSaveEdit = () => {
-    updateFichePierre(editId, { date: editData.date, heures: parseFloat(editData.heures), notes: editData.notes });
+    updateFichePierre(editId, {
+      date: editData.date,
+      heures: parseFloat(editData.heures) || 0,
+      montantDirect: parseFloat(editData.montantDirect) || 0,
+      notes: editData.notes,
+      type: editData.type,
+    });
     setEditId(null);
     load();
     flash('✓ Modifié');
@@ -227,9 +244,21 @@ export default function Pierre() {
             <div key={f.id}>
               {editId === f.id ? (
                 <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                    {['salaire', 'retrait'].map((t) => (
+                      <button key={t}
+                        className={editData.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
+                        style={{ fontSize: 12, padding: '4px 10px' }}
+                        onClick={() => setEditData({ ...editData, type: t })}
+                      >{t === 'salaire' ? 'Salaire' : 'Retrait'}</button>
+                    ))}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <input className="input-field" type="date" value={editData.date} onChange={(e) => setEditData({ ...editData, date: e.target.value })} />
-                    <input className="input-field" type="number" value={editData.heures} onChange={(e) => setEditData({ ...editData, heures: e.target.value })} />
+                    {editData.type === 'retrait'
+                      ? <input className="input-field" type="number" placeholder="Montant" value={editData.montantDirect} onChange={(e) => setEditData({ ...editData, montantDirect: e.target.value })} />
+                      : <input className="input-field" type="number" placeholder="Heures" value={editData.heures} onChange={(e) => setEditData({ ...editData, heures: e.target.value })} />
+                    }
                     <input className="input-field" value={editData.notes} onChange={(e) => setEditData({ ...editData, notes: e.target.value })} placeholder="Notes" />
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -240,8 +269,13 @@ export default function Pierre() {
               ) : (
                 <div className="row-hover nota-row" onClick={() => handleEdit(f)} style={{ cursor: 'pointer' }}>
                   <span style={{ width: 90, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
-                  <span style={{ width: 60 }}>{f.heures}h</span>
-                  <span style={{ flex: 1, fontWeight: 600 }}>{fmt(f.montant)} €</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 10, marginRight: 6,
+                    background: f.type === 'retrait' ? '#fef2f2' : '#eff6ff',
+                    color: f.type === 'retrait' ? '#dc2626' : '#2563eb',
+                  }}>{f.type === 'retrait' ? 'Retrait' : 'Salaire'}</span>
+                  {f.type === 'salaire' && <span style={{ width: 50 }}>{f.heures}h</span>}
+                  <span style={{ flex: 1, fontWeight: 600, color: f.type === 'retrait' ? '#dc2626' : undefined }}>{fmt(f.montant)} €</span>
                   {f.notes && <span style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>{f.notes}</span>}
                   <button className="delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }}>✕</button>
                 </div>
@@ -261,21 +295,35 @@ export default function Pierre() {
         {/* Nouvelle fiche */}
         <div className="card">
           <div className="card-title">Nouvelle fiche</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {['salaire', 'retrait'].map((t) => (
+              <button key={t}
+                className={ficheType === t ? 'btn btn-primary' : 'btn btn-secondary'}
+                style={{ fontSize: 13, padding: '6px 16px' }}
+                onClick={() => setFicheType(t)}
+              >{t === 'salaire' ? 'Salaire' : 'Retrait'}</button>
+            ))}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr', gap: 8, marginBottom: 8, alignItems: 'end' }}>
             <div>
               <div className="label-sm">Date</div>
               <input className="input-field" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div>
-              <div className="label-sm">Heures</div>
-              <input className="input-field" type="number" placeholder="0" value={heures} onChange={(e) => setHeures(e.target.value)} />
+              <div className="label-sm">{ficheType === 'retrait' ? 'Montant' : 'Heures'}</div>
+              {ficheType === 'retrait'
+                ? <input className="input-field" type="number" placeholder="0" value={montantRetrait} onChange={(e) => setMontantRetrait(e.target.value)} />
+                : <input className="input-field" type="number" placeholder="0" value={heures} onChange={(e) => setHeures(e.target.value)} />
+              }
             </div>
             <div>
               <div className="label-sm">Notes</div>
               <input className="input-field" placeholder="Notes (facultatif)" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
           </div>
-          {heures && <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>{heures}h × 10 = <strong>{fmt(parseFloat(heures) * 10)} €</strong></div>}
+          {ficheType === 'salaire' && heures && (
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>{heures}h × 10 = <strong>{fmt(parseFloat(heures) * 10)} €</strong></div>
+          )}
           <button className="btn btn-primary" onClick={handleSaveFiche} style={{ width: '100%' }}>Enregistrer</button>
           {fiches.length > 0 && (
             <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
