@@ -279,7 +279,7 @@ export default function NotesClients() {
                 <span style={{ flex: 1, fontSize: 13 }}>
                   {triPar === 'serveur'
                     ? <>{n.personne} <span style={{ color: '#9ca3af' }}>→ {group.nom}</span></>
-                    : <>{group.nom} <span style={{ color: '#9ca3af' }}>→ {n.destinataire_nom}</>
+                    : <>{group.nom} <span style={{ color: '#9ca3af' }}>→ {n.destinataire_nom}</span></>
                   }
                   {' '}({fmtDate(n.date)})
                 </span>
