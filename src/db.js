@@ -127,7 +127,9 @@ export function getDettes() {
 
 export function saveDettes(dettes) {
   localStorage.setItem('dettes', JSON.stringify(dettes));
-  scheduleDriveSync();
+  // Sync immediately (not debounced) so a page refresh won't lose the carry-over debt
+  if (driveSyncCallback) driveSyncCallback();
+  else scheduleDriveSync();
 }
 
 export function getDette(key) {
@@ -170,12 +172,12 @@ export function resetServeur(key) {
   const totalNotes = getNotes()
     .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = totalSalaires + totalNotes - totalBop - totalBk + getDette(key);
+  const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
 
   const dettes = getDettes();
-  if (effectiveTotal < 0) {
+  if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
     dettes[key] = effectiveTotal;
-  } else {
+  } else if (Number.isFinite(effectiveTotal)) {
     delete dettes[key];
   }
   saveDettes(dettes);
@@ -205,12 +207,12 @@ export function resetPierre() {
   const totalNotes = getNotes()
     .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = totalFiches + totalNotes - totalBk + getDette('pierre');
+  const effectiveTotal = (totalFiches || 0) + (totalNotes || 0) - (totalBk || 0) + (getDette('pierre') || 0);
 
   const dettes = getDettes();
-  if (effectiveTotal < 0) {
+  if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
     dettes['pierre'] = effectiveTotal;
-  } else {
+  } else if (Number.isFinite(effectiveTotal)) {
     delete dettes['pierre'];
   }
   saveDettes(dettes);
