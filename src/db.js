@@ -153,17 +153,15 @@ export function setBopGlobal(key, val) {
 }
 
 // Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
-// If the effective total (current + previous debt) is negative, carry it over to next period.
+// Debt = salaires + notes only (BOP/BK tracked separately, not included in carry-over).
 export function resetServeur(key) {
   const allFiches = getFiches().filter((f) => f.personne_key === key);
   const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
-  const totalBop = allFiches.filter((f) => f.type === 'bop').reduce((a, b) => a + b.montant, 0);
-  const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
     .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = totalSalaires + totalNotes - totalBop - totalBk + getDette(key);
+  const effectiveTotal = totalSalaires + totalNotes + getDette(key);
 
   const dettes = getDettes();
   if (effectiveTotal < 0) {
@@ -188,16 +186,15 @@ export function resetAllServeurs() {
 }
 
 // Reset Pierre: delete all his fichesPierre + hide his received notes
-// Carries over negative balance to next period.
+// Debt = fiches (salaires/retraits) + notes only (BK tracked separately).
 export function resetPierre() {
   const allFiches = getFichesPierre();
   const totalFiches = allFiches.filter((f) => f.type !== 'bk').reduce((a, b) => a + b.montant, 0);
-  const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
     .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = totalFiches + totalNotes - totalBk + getDette('pierre');
+  const effectiveTotal = totalFiches + totalNotes + getDette('pierre');
 
   const dettes = getDettes();
   if (effectiveTotal < 0) {
