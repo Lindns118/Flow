@@ -1,6 +1,5 @@
-// ⚠️ Remplace ces deux valeurs après avoir créé ton projet Google Cloud
-const CLIENT_ID = 'VOTRE_CLIENT_ID.apps.googleusercontent.com';
-const ALLOWED_EMAIL = 'VOTRE_EMAIL@gmail.com';
+const CLIENT_ID = '112387534657-dp9jk1uaqrrch1t0n7o9t118kivtjj72.apps.googleusercontent.com';
+const ALLOWED_EMAIL = 'francois.lecrenier@gmail.com';
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata email profile';
 
