@@ -90,12 +90,19 @@ export function addFiche(personne_key, personne_nom, date, montant, type) {
   const id = String(Date.now() + Math.random());
   fiches.push({ id, personne_key, personne_nom, date, montant: Number(montant), type });
   saveFiches(fiches);
+  if (type === 'bop') {
+    setBopGlobal(personne_key, getBopGlobal(personne_key) + Number(montant));
+  }
   return id;
 }
 
 export function deleteFiche(id) {
-  const fiches = getFiches().filter((f) => f.id !== id);
-  saveFiches(fiches);
+  const all = getFiches();
+  const fiche = all.find((f) => f.id === id);
+  saveFiches(all.filter((f) => f.id !== id));
+  if (fiche?.type === 'bop') {
+    setBopGlobal(fiche.personne_key, getBopGlobal(fiche.personne_key) - fiche.montant);
+  }
 }
 
 export function deletePersonneData(key) {
