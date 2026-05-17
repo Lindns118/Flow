@@ -81,10 +81,10 @@ export default function NotesClients() {
 
     doc.setFontSize(13);
     doc.setFont(undefined, 'bold');
-    doc.text('Notes Clients', margin, 12);
+    doc.text('Notes Clients' + (search.trim() ? ` — "${search.trim()}"` : ''), margin, 12);
     doc.setFont(undefined, 'normal');
 
-    const activeNotes = notes
+    const activeNotes = filteredNotes
       .filter((n) => !n.annulee)
       .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
@@ -123,12 +123,14 @@ export default function NotesClients() {
 
     doc.setFontSize(13);
     doc.setFont(undefined, 'bold');
-    doc.text(groupBy === 'serveur' ? 'Notes par serveur' : 'Notes par client', margin, 12);
+    const title = (groupBy === 'serveur' ? 'Notes par serveur' : 'Notes par client')
+      + (search.trim() ? ` — "${search.trim()}"` : '');
+    doc.text(title, margin, 12);
     doc.setFont(undefined, 'normal');
 
-    // Build groups from all active notes
+    // Build groups from filtered active notes
     const grp = {};
-    notes.filter((n) => !n.annulee).forEach((n) => {
+    filteredNotes.filter((n) => !n.annulee).forEach((n) => {
       const k = groupBy === 'serveur'
         ? (n.destinataire_key || 'inconnu')
         : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
