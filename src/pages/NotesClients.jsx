@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getNotes, saveNotes, deleteNote } from '../db';
+import jsPDF from 'jspdf';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
@@ -54,11 +55,83 @@ export default function NotesClients() {
 
   const toggleAnnulees = (key) => setShowAnnulees((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  const exportPDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const margin = 12;
+    // Colonnes : Date | Nom | Combien | Serveur | Date | Serveur | OK
+    const cols = [
+      { header: 'Date',    w: 22 },
+      { header: 'Nom',     w: 52 },
+      { header: 'Combien', w: 24 },
+      { header: 'Serveur', w: 32 },
+      { header: 'Date',    w: 20 },
+      { header: 'Serveur', w: 22 },
+      { header: 'OK',      w: 8  },
+    ]; // total = 180mm
+    const rowH = 8;
+    let y = 22;
+
+    doc.setFontSize(13);
+    doc.setFont(undefined, 'bold');
+    doc.text('Notes Clients', margin, 12);
+    doc.setFont(undefined, 'normal');
+
+    const activeNotes = notes
+      .filter((n) => !n.annulee)
+      .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
+
+    const drawRow = (cells, bold = false) => {
+      let x = margin;
+      doc.setFontSize(bold ? 8.5 : 8);
+      doc.setFont(undefined, bold ? 'bold' : 'normal');
+      cols.forEach((col, i) => {
+        doc.rect(x, y, col.w, rowH);
+        if (cells[i]) {
+          const maxW = col.w - 2;
+          // truncate text to fit cell
+          let txt = String(cells[i]);
+          while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
+          doc.text(txt, x + 1.2, y + rowH - 2.2);
+        }
+        x += col.w;
+      });
+      y += rowH;
+      if (y > 282) {
+        doc.addPage();
+        y = 12;
+        drawRow(cols.map((c) => c.header), true);
+      }
+    };
+
+    // En-tête
+    drawRow(cols.map((c) => c.header), true);
+
+    // Lignes de données (4 premières colonnes remplies, 3 dernières vides)
+    activeNotes.forEach((n) => {
+      drawRow([
+        fmtDate(n.date),
+        n.personne || '',
+        fmt(n.montant) + ' €',
+        n.destinataire_nom || n.destinataire_key || '',
+        '', '', '',
+      ]);
+    });
+
+    doc.save('notes-clients.pdf');
+  };
+
   return (
     <div className="page-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Notes clients</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 13, padding: '6px 14px' }}
+            onClick={exportPDF}
+          >
+            Export PDF
+          </button>
           <button
             className={triPar === 'serveur' ? 'btn btn-primary' : 'btn btn-secondary'}
             style={{ fontSize: 13, padding: '6px 14px' }}
@@ -86,8 +159,8 @@ export default function NotesClients() {
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
 
-        // Tri interne par date
-        const sorted = (arr) => [...arr].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        // Tri alphabétique par nom de client
+        const sorted = (arr) => [...arr].sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
         const renderNote = (n) => (
           <div key={n.id}>

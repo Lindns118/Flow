@@ -71,8 +71,7 @@ export default function Calculator() {
     const dest = line.destinataire === 'pierre'
       ? { key: 'pierre', nom: 'Pierre' }
       : personnesList.find((p) => p.key === line.destinataire) || { key: line.destinataire, nom: line.destinataire };
-    // Notes toujours en négatif depuis le calculateur (ce sont des charges)
-    const montant = -Math.abs(parseFloat(line.montant));
+    const montant = parseFloat(line.montant);
     const note = addNote({
       personne: line.personne,
       montant,

@@ -224,7 +224,7 @@ export function saveFichesPierre(fiches) {
 export function addFichePierre({ date, heures, montantDirect, notes, type = 'salaire' }) {
   const fiches = getFichesPierre();
   const mois = date.substring(0, 7);
-  const montant = type === 'retrait' ? Number(montantDirect) : Number(heures) * 10;
+  const montant = type === 'retrait' ? -Math.abs(Number(montantDirect)) : Number(heures) * 10;
   const id = String(Date.now() + Math.random());
   fiches.push({
     id, date, mois, type,
@@ -255,7 +255,7 @@ export function updateFichePierre(id, { date, heures, montantDirect, notes, type
   fiche.type = type || fiche.type || 'salaire';
   fiche.notes = notes || '';
   if (fiche.type === 'retrait') {
-    fiche.montant = Number(montantDirect);
+    fiche.montant = -Math.abs(Number(montantDirect));
     fiche.heures = 0;
   } else {
     fiche.heures = Number(heures);
