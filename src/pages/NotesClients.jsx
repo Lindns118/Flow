@@ -7,7 +7,6 @@ const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 export default function NotesClients() {
   const [notes, setNotes] = useState([]);
   const [showAnnulees, setShowAnnulees] = useState({});
-  const [showPositifs, setShowPositifs] = useState({});
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [triPar, setTriPar] = useState('serveur'); // 'serveur' | 'client'
@@ -54,7 +53,6 @@ export default function NotesClients() {
   };
 
   const toggleAnnulees = (key) => setShowAnnulees((prev) => ({ ...prev, [key]: !prev[key] }));
-  const togglePositifs = (key) => setShowPositifs((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <div className="page-container">
@@ -85,14 +83,8 @@ export default function NotesClients() {
       {sortedGroups.map(([key, group]) => {
         const activeNotes = group.notes.filter((n) => !n.annulee);
         const annuleesNotes = group.notes.filter((n) => n.annulee);
-
-        // Notes négatives = actives visibles / notes positives = cachées par défaut
-        const negatives = activeNotes.filter((n) => n.montant < 0);
-        const positives = activeNotes.filter((n) => n.montant >= 0);
-
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
-        const showPos = showPositifs[key];
 
         // Tri interne par date
         const sorted = (arr) => [...arr].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -146,15 +138,6 @@ export default function NotesClients() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                {positives.length > 0 && (
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: 12, padding: '4px 10px' }}
-                    onClick={() => togglePositifs(key)}
-                  >
-                    {showPos ? 'Masquer positifs' : `Positifs (${positives.length})`}
-                  </button>
-                )}
                 {annuleesNotes.length > 0 && (
                   <button
                     className="btn btn-secondary"
@@ -167,18 +150,11 @@ export default function NotesClients() {
               </div>
             </div>
 
-            {negatives.length === 0 && !showPos && (
-              <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note négative active</div>
+            {activeNotes.length === 0 && (
+              <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note active</div>
             )}
 
-            {sorted(negatives).map(renderNote)}
-
-            {showPos && positives.length > 0 && (
-              <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 600 }}>POSITIFS (cachés)</div>
-                {sorted(positives).map(renderNote)}
-              </div>
-            )}
+            {sorted(activeNotes).map(renderNote)}
 
             {showAnn && annuleesNotes.length > 0 && (
               <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
