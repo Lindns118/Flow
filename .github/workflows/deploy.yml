@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - claude/build-calculator-app-kCFlX
+      - claude/fix-launch-error-m5Tl8
 
 permissions:
   contents: read
