@@ -17,7 +17,7 @@ export default function Calculator() {
   const [noteLines, setNoteLines] = useState([
     { personne: '', montant: '', destinataire: '', date: today() },
   ]);
-  const [lastNote, setLastNote] = useState(null);
+  const [sessionNotes, setSessionNotes] = useState([]);
   const [pierreHeures, setPierreHeures] = useState('');
   const [pierreDate, setPierreDate] = useState(today());
   const [personnesList, setPersonnesList] = useState([]);
@@ -54,19 +54,29 @@ export default function Calculator() {
     const dest = line.destinataire === 'pierre'
       ? { key: 'pierre', nom: 'Pierre' }
       : personnesList.find((p) => p.key === line.destinataire) || { key: line.destinataire, nom: line.destinataire };
+    // Notes toujours en négatif depuis le calculateur (ce sont des charges)
+    const montant = -Math.abs(parseFloat(line.montant));
     const note = addNote({
       personne: line.personne,
-      montant: parseFloat(line.montant),
+      montant,
       destinataire_key: dest.key,
       destinataire_nom: dest.nom,
       date: line.date || today(),
     });
-    setLastNote(note);
+    setSessionNotes((prev) => [note, ...prev]);
     flashMsg('✓ Note enregistrée');
   };
 
   const addNoteLine = () => {
     setNoteLines([...noteLines, { personne: '', montant: '', destinataire: '', date: today() }]);
+  };
+
+  const addPersonRow = () => {
+    setPersonRows([...personRows, { prenom: '', date: today(), valeur: '' }]);
+  };
+
+  const removePersonRow = (i) => {
+    setPersonRows(personRows.filter((_, idx) => idx !== i));
   };
 
   const updateNote = (i, field, val) => {
@@ -134,7 +144,7 @@ export default function Calculator() {
         </div>
         <div className="blue-total" style={{ marginBottom: 14 }}>TOTAL SOMMES : {fmt(totalSommes)} €</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="label-sm" style={{ width: 120 }}>DIVISEUR (+)</div>
+          <div className="label-sm" style={{ width: 120 }}>DIVISEUR (÷)</div>
           <input
             className="input-field"
             type="number"
@@ -153,8 +163,8 @@ export default function Calculator() {
         <div className="card">
           <div className="card-title">Personnes × H</div>
           {personRows.map((p, i) => (
-            <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: i < 2 ? '1px solid #f3f4f6' : 'none' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 80px 36px', gap: 8, alignItems: 'end' }}>
+            <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: i < personRows.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 80px 36px 28px', gap: 8, alignItems: 'end' }}>
                 <div>
                   <div className="label-sm">Prénom</div>
                   <input className="input-field" placeholder="Prénom" value={p.prenom}
@@ -170,15 +180,15 @@ export default function Calculator() {
                   <input className="input-field" type="number" placeholder="0" value={p.valeur}
                     onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)} />
                 </div>
-                <div>
-                  <button className="btn btn-primary" style={{ padding: '8px 6px', width: '100%' }} onClick={() => handleSaveFiche(i)} title="Sauvegarder">💾</button>
-                </div>
+                <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveFiche(i)} title="Sauvegarder">💾</button>
+                <button className="btn btn-danger" style={{ padding: '8px 4px', fontSize: 12 }} onClick={() => removePersonRow(i)} title="Supprimer">✕</button>
               </div>
               <div style={{ marginTop: 6, textAlign: 'right', fontSize: 13, color: '#6b7280' }}>
                 {fmt(parseFloat(p.valeur) || 0)} × H({fmt(H)}) = <strong>{fmt(personneResults[i])}</strong>
               </div>
             </div>
           ))}
+          <button className="btn btn-secondary" onClick={addPersonRow} style={{ marginBottom: 12 }}>+ Ajouter une personne</button>
           <div className="blue-total">TOTAL PERSONNES : {fmt(totalPersonnes)} €</div>
         </div>
 
@@ -195,7 +205,7 @@ export default function Calculator() {
                 </div>
                 <div>
                   <div className="label-sm">Montant</div>
-                  <input className="input-field" type="number" placeholder="±0" value={line.montant}
+                  <input className="input-field" type="number" placeholder="0" value={line.montant}
                     onChange={(e) => updateNote(i, 'montant', e.target.value)} />
                 </div>
               </div>
@@ -220,17 +230,19 @@ export default function Calculator() {
           ))}
           <button className="btn btn-secondary" onClick={addNoteLine} style={{ marginBottom: 14 }}>+ Ajouter une ligne</button>
 
-          {lastNote && (
+          {sessionNotes.length > 0 && (
             <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginBottom: 14 }}>
               <div className="label-sm" style={{ marginBottom: 6 }}>NOTES ENREGISTRÉES (SESSION)</div>
-              <div className="nota-row">
-                <span style={{ flex: 1 }}>
-                  {lastNote.personne} → {lastNote.destinataire_nom} ({lastNote.date ? lastNote.date.substring(5, 7) + '/' + lastNote.date.substring(2, 4) : ''})
-                </span>
-                <span style={{ color: lastNote.montant < 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
-                  {fmt(lastNote.montant)} €
-                </span>
-              </div>
+              {sessionNotes.map((n) => (
+                <div key={n.id} className="nota-row">
+                  <span style={{ flex: 1 }}>
+                    {n.personne} → {n.destinataire_nom} ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
+                  </span>
+                  <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                    {fmt(n.montant)} €
+                  </span>
+                </div>
+              ))}
             </div>
           )}
 
