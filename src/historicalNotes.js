@@ -3589,5 +3589,68 @@ export const historicalNotes = [
     "destinataire_nom": "hendrickx",
     "date": "2024-10-17",
     "annulee": false
+  },
+  {
+    "id": "1000000000399",
+    "personne": "Seba",
+    "montant": 121.5,
+    "destinataire_key": "sam",
+    "destinataire_nom": "Sam",
+    "date": "2026-04-25",
+    "annulee": false
+  },
+  {
+    "id": "1000000000400",
+    "personne": "Seba",
+    "montant": -39,
+    "destinataire_key": "sam",
+    "destinataire_nom": "Sam",
+    "date": "2026-04-11",
+    "annulee": false
+  },
+  {
+    "id": "1000000000401",
+    "personne": "Max le fou",
+    "montant": 13,
+    "destinataire_key": "romane",
+    "destinataire_nom": "Romane",
+    "date": "2026-04-07",
+    "annulee": false
+  },
+  {
+    "id": "1000000000402",
+    "personne": "Max le fou",
+    "montant": 20,
+    "destinataire_key": "pierre",
+    "destinataire_nom": "Pierre",
+    "date": "2026-03-18",
+    "annulee": false
+  },
+  {
+    "id": "1000000000403",
+    "personne": "Asta",
+    "montant": 21.7,
+    "destinataire_key": "pierre",
+    "destinataire_nom": "Pierre",
+    "date": "2026-03-30",
+    "annulee": false
+  },
+  {
+    "id": "1000000000404",
+    "personne": "Max le fou",
+    "montant": 20.4,
+    "destinataire_key": "laure",
+    "destinataire_nom": "Laure",
+    "date": "2026-04-07",
+    "annulee": false
+  },
+  {
+    "id": "1000000000405",
+    "personne": "Jean-luc",
+    "montant": 21.4,
+    "destinataire_key": "hendrickx",
+    "destinataire_nom": "hendrickx",
+    "date": "2026-04-25",
+    "annulee": false
   }
 ];
