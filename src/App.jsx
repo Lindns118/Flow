@@ -105,6 +105,9 @@ function Navbar({ onLogout, onImportHistorique }) {
       <span className="navbar-title" onClick={handleTitleClick}>
         SALAIRES &amp; NOTES CLIENTS
       </span>
+      <Link to="/" style={{ color: '#fff', fontSize: 13, opacity: 0.8, textDecoration: 'none', marginLeft: 16, whiteSpace: 'nowrap' }}>
+        ← Accueil
+      </Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {user?.picture && (
           <img src={user.picture} alt="profil" style={{ width: 28, height: 28, borderRadius: '50%' }} />
