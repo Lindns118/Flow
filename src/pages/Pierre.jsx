@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
-  getNotes, addNote, getPersonnes
+  getNotes, addNote, getPersonnes, resetPierre
 } from '../db';
 import jsPDF from 'jspdf';
 
@@ -29,6 +29,7 @@ export default function Pierre() {
   const [lastNote, setLastNote] = useState(null);
   const [msg, setMsg] = useState('');
   const [confirmDeleteMois, setConfirmDeleteMois] = useState(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
@@ -46,6 +47,14 @@ export default function Pierre() {
   useEffect(() => { load(); }, []);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
+
+  const handleReset = () => {
+    resetPierre();
+    setConfirmReset(false);
+    setSelectedMois(null);
+    load();
+    flash('✓ Pierre réinitialisé');
+  };
 
   // Group by month
   const moisMap = fiches.reduce((acc, f) => {
@@ -132,6 +141,19 @@ export default function Pierre() {
 
   return (
     <div className="page-container">
+      {confirmReset && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Réinitialiser Pierre</h3>
+            <p>Toutes les fiches de Pierre seront supprimées. Les notes resteront visibles dans Notes Clients.</p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
+              <button className="btn btn-danger" onClick={handleReset}>Réinitialiser</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDeleteMois && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -153,7 +175,10 @@ export default function Pierre() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Pierre</h1>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={exportPDF}>Export PDF</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-danger" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
+          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={exportPDF}>Export PDF</button>
+        </div>
       </div>
 
       {/* Onglets mois */}

@@ -7,7 +7,7 @@ import Pierre from './pages/Pierre';
 import NotesClients from './pages/NotesClients';
 import Personnes from './pages/Personnes';
 import Prets from './pages/Prets';
-import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes } from './db';
+import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
 import { loadDataFromDrive, saveDataToDrive } from './googleDrive';
 import { historicalNotes } from './historicalNotes';
@@ -67,6 +67,8 @@ function Navbar({ onLogout, onImportHistorique }) {
   const [showPanel, setShowPanel] = useState(false);
   const [personnes, setPersonnes] = useState([]);
   const [importMsg, setImportMsg] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetMsg, setResetMsg] = useState('');
   const clickCountRef = useRef(0);
   const timerRef = useRef(null);
   const navigate = useNavigate();
@@ -101,8 +103,28 @@ function Navbar({ onLogout, onImportHistorique }) {
     navigate('/notes-clients');
   };
 
+  const handleResetTous = () => {
+    resetTous();
+    setConfirmReset(false);
+    setShowPanel(false);
+    setResetMsg('✓ Tous réinitialisés');
+    setTimeout(() => setResetMsg(''), 3000);
+  };
+
   return (
     <div className="navbar" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {confirmReset && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Réinitialiser tous</h3>
+            <p>Supprimer toutes les fiches (tous les serveurs + Pierre) et masquer leurs notes de leurs fiches ? Les notes resteront visibles dans Notes Clients.</p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
+              <button className="btn btn-danger" onClick={handleResetTous}>Réinitialiser</button>
+            </div>
+          </div>
+        </div>
+      )}
       <span className="navbar-title" onClick={handleTitleClick}>
         SALAIRES &amp; NOTES CLIENTS
       </span>
@@ -138,6 +160,13 @@ function Navbar({ onLogout, onImportHistorique }) {
             📥 Importer historique
           </span>
           {importMsg && <span style={{ color: '#10b981', fontSize: 12 }}>{importMsg}</span>}
+          <span
+            onClick={() => setConfirmReset(true)}
+            style={{ color: '#ef4444', cursor: 'pointer', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 8, marginTop: 4 }}
+          >
+            🔄 Réinitialiser tous
+          </span>
+          {resetMsg && <span style={{ color: '#10b981', fontSize: 12 }}>{resetMsg}</span>}
         </div>
       )}
     </div>

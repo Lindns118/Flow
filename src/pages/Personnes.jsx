@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonnes, deletePersonne, resetServeur, resetAllServeurs } from '../db';
+import { getPersonnes, deletePersonne, resetServeur, resetTous } from '../db';
 
 function Modal({ title, message, onConfirm, onCancel }) {
   return (
@@ -38,10 +38,10 @@ export default function Personnes() {
 
   const confirmReinitialiserTous = () => {
     setModal({
-      title: 'Réinitialiser tous les serveurs',
-      message: 'Supprimer toutes les fiches et masquer les notes de tous les serveurs (sauf Pierre) ?',
+      title: 'Réinitialiser tous',
+      message: 'Supprimer toutes les fiches et masquer les notes de tous les serveurs (Pierre inclus) ?',
       onConfirm: () => {
-        resetAllServeurs();
+        resetTous();
         setModal(null);
         load();
       },
@@ -64,7 +64,7 @@ export default function Personnes() {
     <div className="page-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Personnes</h1>
-        {personnes.filter((p) => p.key !== 'pierre').length > 0 && (
+        {personnes.length > 0 && (
           <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={confirmReinitialiserTous}>
             Réinitialiser tous
           </button>
