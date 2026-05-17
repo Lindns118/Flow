@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { getNotes, saveNotes, deleteNote, getHiddenNotes, hideMatchingPairs } from '../db';
 import jsPDF from 'jspdf';
 
+const normName = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
+
 // Compute which hidden notes actually form cancelling pairs
 function computePairHiddenIds(notes, hiddenIds) {
   const hiddenActive = notes.filter((n) => !n.annulee && hiddenIds.has(n.id));
@@ -12,7 +14,7 @@ function computePairHiddenIds(notes, hiddenIds) {
       (m) =>
         m.id !== n.id &&
         !result.has(m.id) &&
-        (m.personne || '').toLowerCase() === (n.personne || '').toLowerCase() &&
+        normName(m.personne) === normName(n.personne) &&
         m.destinataire_key === n.destinataire_key &&
         m.date === n.date &&
         Math.abs(Number(m.montant) + Number(n.montant)) < 0.001

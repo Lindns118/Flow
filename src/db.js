@@ -444,6 +444,8 @@ export function deleteAncienServeurEntry(id) {
 }
 
 // Detect active note pairs (same personne/destinataire/date, opposite amounts) and hide them
+const normName = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
+
 export function hideMatchingPairs() {
   const notes = getNotes();
   const hidden = new Set(getHiddenNotes());
@@ -456,7 +458,7 @@ export function hideMatchingPairs() {
       (m) =>
         m.id !== n.id &&
         !toHide.has(m.id) &&
-        (m.personne || '').toLowerCase() === (n.personne || '').toLowerCase() &&
+        normName(m.personne) === normName(n.personne) &&
         m.destinataire_key === n.destinataire_key &&
         m.date === n.date &&
         Math.abs(Number(m.montant) + Number(n.montant)) < 0.001
