@@ -11,12 +11,21 @@ export default function NotesClients() {
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [triPar, setTriPar] = useState('serveur'); // 'serveur' | 'client'
+  const [search, setSearch] = useState('');
 
   const load = () => setNotes(getNotes());
   useEffect(() => { load(); }, []);
 
+  // Filtrage par recherche (client ou serveur)
+  const filteredNotes = notes.filter((n) => {
+    if (!search.trim()) return true;
+    const s = search.toLowerCase();
+    return (n.personne || '').toLowerCase().includes(s)
+      || (n.destinataire_nom || n.destinataire_key || '').toLowerCase().includes(s);
+  });
+
   // Groupement selon le tri choisi
-  const grouped = notes.reduce((acc, n) => {
+  const grouped = filteredNotes.reduce((acc, n) => {
     const key = triPar === 'serveur'
       ? (n.destinataire_key || 'inconnu')
       : (n.personne?.toLowerCase().replace(/\s+/g, '_') || 'inconnu');
@@ -28,7 +37,6 @@ export default function NotesClients() {
     return acc;
   }, {});
 
-  // Tri alphabétique des groupes
   const sortedGroups = Object.entries(grouped).sort(([, a], [, b]) =>
     a.nom.localeCompare(b.nom, 'fr')
   );
@@ -55,10 +63,10 @@ export default function NotesClients() {
 
   const toggleAnnulees = (key) => setShowAnnulees((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  // Export PDF global (tableau)
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
-    // Colonnes : Date | Nom | Combien | Serveur | Date | Serveur | OK
     const cols = [
       { header: 'Date',    w: 22 },
       { header: 'Nom',     w: 52 },
@@ -67,7 +75,7 @@ export default function NotesClients() {
       { header: 'Date',    w: 20 },
       { header: 'Serveur', w: 22 },
       { header: 'OK',      w: 8  },
-    ]; // total = 180mm
+    ];
     const rowH = 8;
     let y = 22;
 
@@ -87,70 +95,155 @@ export default function NotesClients() {
       cols.forEach((col, i) => {
         doc.rect(x, y, col.w, rowH);
         if (cells[i]) {
-          const maxW = col.w - 2;
-          // truncate text to fit cell
           let txt = String(cells[i]);
+          const maxW = col.w - 2;
           while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
           doc.text(txt, x + 1.2, y + rowH - 2.2);
         }
         x += col.w;
       });
       y += rowH;
-      if (y > 282) {
-        doc.addPage();
-        y = 12;
-        drawRow(cols.map((c) => c.header), true);
-      }
+      if (y > 282) { doc.addPage(); y = 12; drawRow(cols.map((c) => c.header), true); }
     };
 
-    // En-tête
     drawRow(cols.map((c) => c.header), true);
-
-    // Lignes de données (4 premières colonnes remplies, 3 dernières vides)
     activeNotes.forEach((n) => {
-      drawRow([
-        fmtDate(n.date),
-        n.personne || '',
-        fmt(n.montant) + ' €',
-        n.destinataire_nom || n.destinataire_key || '',
-        '', '', '',
-      ]);
+      drawRow([fmtDate(n.date), n.personne || '', fmt(n.montant) + ' €', n.destinataire_nom || n.destinataire_key || '', '', '', '']);
     });
 
     doc.save('notes-clients.pdf');
   };
 
+  // Export PDF par serveur ou par client
+  const exportPDFGroupe = (groupBy) => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const margin = 12;
+    const rowH = 7;
+    let y = 20;
+
+    doc.setFontSize(13);
+    doc.setFont(undefined, 'bold');
+    doc.text(groupBy === 'serveur' ? 'Notes par serveur' : 'Notes par client', margin, 12);
+    doc.setFont(undefined, 'normal');
+
+    // Build groups from all active notes
+    const grp = {};
+    notes.filter((n) => !n.annulee).forEach((n) => {
+      const k = groupBy === 'serveur'
+        ? (n.destinataire_key || 'inconnu')
+        : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
+      const label = groupBy === 'serveur'
+        ? (n.destinataire_nom || n.destinataire_key || '?')
+        : (n.personne || '?');
+      if (!grp[k]) grp[k] = { nom: label, notes: [] };
+      grp[k].notes.push(n);
+    });
+
+    const groups = Object.values(grp).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const colLabel = groupBy === 'serveur' ? 'Client' : 'Serveur';
+    const cols = [{ w: 65 }, { w: 28 }, { w: 35 }];
+
+    const drawCell = (cx, cy, w, txt, bold) => {
+      doc.rect(cx, cy, w, rowH);
+      if (txt) {
+        doc.setFont(undefined, bold ? 'bold' : 'normal');
+        let t = String(txt);
+        while (doc.getTextWidth(t) > w - 2 && t.length > 1) t = t.slice(0, -1);
+        doc.text(t, cx + 1.2, cy + rowH - 1.8);
+      }
+    };
+
+    groups.forEach((group) => {
+      const total = group.notes.reduce((a, b) => a + b.montant, 0);
+
+      if (y > 268) { doc.addPage(); y = 20; }
+
+      // Section header
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(37, 99, 235);
+      doc.text(`${group.nom.toUpperCase()}`, margin, y);
+      doc.setTextColor(total < 0 ? 220 : 22, total < 0 ? 38 : 163, total < 0 ? 38 : 74);
+      doc.text(`${fmt(total)} €`, margin + 70, y);
+      doc.setTextColor(0, 0, 0);
+      y += 5;
+
+      // Column headers
+      doc.setFontSize(7.5);
+      let x = margin;
+      [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
+      y += rowH;
+
+      // Rows
+      [...group.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).forEach((n) => {
+        if (y > 278) { doc.addPage(); y = 20; }
+        doc.setFontSize(7.5);
+        x = margin;
+        const row = groupBy === 'serveur'
+          ? [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']
+          : [n.destinataire_nom || n.destinataire_key || '', fmtDate(n.date), fmt(n.montant) + ' €'];
+        row.forEach((val, i) => { drawCell(x, y, cols[i].w, val, false); x += cols[i].w; });
+        y += rowH;
+      });
+
+      // Total row
+      doc.setFontSize(7.5);
+      x = margin;
+      ['Total', '', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, cols[i].w, val, true); x += cols[i].w; });
+      y += rowH + 6;
+    });
+
+    doc.save(`notes-${groupBy}.pdf`);
+  };
+
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Notes clients</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-secondary"
-            style={{ fontSize: 13, padding: '6px 14px' }}
-            onClick={exportPDF}
-          >
-            Export PDF
-          </button>
           <button
             className={triPar === 'serveur' ? 'btn btn-primary' : 'btn btn-secondary'}
             style={{ fontSize: 13, padding: '6px 14px' }}
             onClick={() => setTriPar('serveur')}
-          >
-            Par serveur
-          </button>
+          >Par serveur</button>
           <button
             className={triPar === 'client' ? 'btn btn-primary' : 'btn btn-secondary'}
             style={{ fontSize: 13, padding: '6px 14px' }}
             onClick={() => setTriPar('client')}
-          >
-            Par client
-          </button>
+          >Par client</button>
         </div>
       </div>
 
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 15 }}>🔍</span>
+        <input
+          className="input-field"
+          placeholder="Rechercher client ou serveur..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ paddingLeft: 32, width: '100%' }}
+        />
+      </div>
+
+      {/* Export buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={exportPDF}>
+          Export PDF global
+        </button>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('serveur')}>
+          Export par serveur
+        </button>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('client')}>
+          Export par client
+        </button>
+      </div>
+
       {sortedGroups.length === 0 && (
-        <div className="card" style={{ color: '#9ca3af' }}>Aucune note enregistrée</div>
+        <div className="card" style={{ color: '#9ca3af' }}>
+          {search ? 'Aucun résultat pour cette recherche' : 'Aucune note enregistrée'}
+        </div>
       )}
 
       {sortedGroups.map(([key, group]) => {
@@ -159,7 +252,6 @@ export default function NotesClients() {
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
 
-        // Tri alphabétique par nom de client
         const sorted = (arr) => [...arr].sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
         const renderNote = (n) => (
@@ -210,17 +302,15 @@ export default function NotesClients() {
                   {fmt(total)} €
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {annuleesNotes.length > 0 && (
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: 12, padding: '4px 10px' }}
-                    onClick={() => toggleAnnulees(key)}
-                  >
-                    {showAnn ? 'Masquer annulées' : `Annulées (${annuleesNotes.length})`}
-                  </button>
-                )}
-              </div>
+              {annuleesNotes.length > 0 && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => toggleAnnulees(key)}
+                >
+                  {showAnn ? 'Masquer annulées' : `Annulées (${annuleesNotes.length})`}
+                </button>
+              )}
             </div>
 
             {activeNotes.length === 0 && (
