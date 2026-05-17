@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
-  getNotes, addNote, getPersonnes, resetPierre
+  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes
 } from '../db';
 import jsPDF from 'jspdf';
 
@@ -36,7 +36,8 @@ export default function Pierre() {
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
     setFiches(all);
-    setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee));
+    const hidden = getHiddenNotes();
+    setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id)));
     setPersonnesList(getPersonnes());
     // Auto-select current month if nothing selected
     setSelectedMois((prev) => {
