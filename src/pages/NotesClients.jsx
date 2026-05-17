@@ -1,6 +1,26 @@
 import { useState, useEffect } from 'react';
-import { getNotes, saveNotes, deleteNote, getHiddenNotes, toggleNoteHidden, hideMatchingPairs } from '../db';
+import { getNotes, saveNotes, deleteNote, getHiddenNotes, hideMatchingPairs } from '../db';
 import jsPDF from 'jspdf';
+
+// Compute which hidden notes actually form cancelling pairs
+function computePairHiddenIds(notes, hiddenIds) {
+  const hiddenActive = notes.filter((n) => !n.annulee && hiddenIds.has(n.id));
+  const result = new Set();
+  hiddenActive.forEach((n) => {
+    if (result.has(n.id)) return;
+    const pair = hiddenActive.find(
+      (m) =>
+        m.id !== n.id &&
+        !result.has(m.id) &&
+        (m.personne || '').toLowerCase() === (n.personne || '').toLowerCase() &&
+        m.destinataire_key === n.destinataire_key &&
+        m.date === n.date &&
+        Math.abs(Number(m.montant) + Number(n.montant)) < 0.001
+    );
+    if (pair) { result.add(n.id); result.add(pair.id); }
+  });
+  return result;
+}
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
@@ -21,6 +41,9 @@ export default function NotesClients() {
     setHiddenIds(new Set(getHiddenNotes()));
   };
   useEffect(() => { load(); }, []);
+
+  // Only notes that truly form cancelling pairs (not reset-hidden notes)
+  const pairHiddenIds = computePairHiddenIds(notes, hiddenIds);
 
   const filteredNotes = notes.filter((n) => {
     if (!search.trim()) return true;
@@ -45,16 +68,9 @@ export default function NotesClients() {
     a.nom.localeCompare(b.nom, 'fr')
   );
 
-  const totalHiddenCount = [...hiddenIds].filter((id) =>
-    notes.find((n) => n.id === id && !n.annulee)
-  ).length;
+  const totalHiddenCount = pairHiddenIds.size;
 
   const handleDelete = (id) => { deleteNote(id); load(); };
-
-  const handleToggleHidden = (id) => {
-    toggleNoteHidden(id);
-    setHiddenIds(new Set(getHiddenNotes()));
-  };
 
   const handleEdit = (n) => {
     setEditId(n.id);
@@ -246,7 +262,8 @@ export default function NotesClients() {
 
       {sortedGroups.map(([key, group]) => {
         const activeNotes = group.notes.filter((n) => !n.annulee && !hiddenIds.has(n.id));
-        const hiddenNotes = group.notes.filter((n) => !n.annulee && hiddenIds.has(n.id));
+        // Only show pairs (notes hidden because they cancel each other), not reset-hidden notes
+        const hiddenNotes = group.notes.filter((n) => !n.annulee && pairHiddenIds.has(n.id));
         const annuleesNotes = group.notes.filter((n) => n.annulee);
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
@@ -286,14 +303,6 @@ export default function NotesClients() {
                 <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>
                   {fmt(n.montant)} €
                 </span>
-                <button
-                  className="btn btn-secondary"
-                  style={{ marginLeft: 6, padding: '2px 7px', fontSize: 11 }}
-                  title={isHidden ? 'Afficher' : 'Cacher'}
-                  onClick={(e) => { e.stopPropagation(); handleToggleHidden(n.id); }}
-                >
-                  {isHidden ? '👁' : '⊘'}
-                </button>
                 <button
                   className="btn btn-danger"
                   style={{ marginLeft: 4, padding: '2px 8px', fontSize: 12 }}
