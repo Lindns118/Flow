@@ -105,6 +105,22 @@ export function deletePersonne(key) {
   savePersonnes(personnes);
 }
 
+// Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
+export function resetServeur(key) {
+  deletePersonneData(key);
+  const notes = getNotes();
+  const hiddenSet = new Set(getHiddenNotes());
+  notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
+  localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
+  scheduleDriveSync();
+}
+
+export function resetAllServeurs() {
+  getPersonnes()
+    .filter((p) => p.key !== 'pierre')
+    .forEach((p) => resetServeur(p.key));
+}
+
 // --- NoteClient ---
 export function getNotes() {
   try {
@@ -211,6 +227,11 @@ export function addFichePierre({ date, heures, notes }) {
 
 export function deleteFichePierre(id) {
   const fiches = getFichesPierre().filter((f) => f.id !== id);
+  saveFichesPierre(fiches);
+}
+
+export function deleteFichesPierreMois(mois) {
+  const fiches = getFichesPierre().filter((f) => f.mois !== mois);
   saveFichesPierre(fiches);
 }
 

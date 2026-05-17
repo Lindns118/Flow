@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getPersonnes, getFiches, getNotes, getHiddenNotes,
-  deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify
+  deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur
 } from '../db';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -19,6 +19,7 @@ export default function Personne() {
   const [showAnnulees, setShowAnnulees] = useState(false);
   const [bopInput, setBopInput] = useState('');
   const [bkInput, setBkInput] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const load = () => {
     const personnes = getPersonnes();
@@ -42,6 +43,12 @@ export default function Personne() {
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const totalGeneral = totalSalaires + totalNotes - totalBop - totalBk;
+
+  const handleReset = () => {
+    resetServeur(key);
+    setConfirmReset(false);
+    load();
+  };
 
   const handleDeleteFiche = (id) => {
     deleteFiche(id);
@@ -156,9 +163,23 @@ export default function Personne() {
 
   return (
     <div className="page-container">
+      {confirmReset && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Réinitialiser {personne.nom}</h3>
+            <p>Toutes les fiches (salaires, BOP, BK) seront supprimées. Les notes resteront visibles dans Notes Clients mais plus sur cette fiche.</p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
+              <button className="btn btn-danger" onClick={handleReset}>Réinitialiser</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>{personne.nom}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
           <button className="btn btn-primary" onClick={exportPDF}>Export PDF</button>
           <button className="btn btn-secondary" onClick={exportWord}>Export Word</button>
         </div>

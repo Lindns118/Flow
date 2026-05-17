@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonnes, deletePersonne, deletePersonneData } from '../db';
+import { getPersonnes, deletePersonne, resetServeur, resetAllServeurs } from '../db';
 
 function Modal({ title, message, onConfirm, onCancel }) {
   return (
@@ -24,12 +24,24 @@ export default function Personnes() {
   const load = () => setPersonnes(getPersonnes());
   useEffect(() => { load(); }, []);
 
-  const confirmVider = (p) => {
+  const confirmReinitialiser = (p) => {
     setModal({
-      title: 'Vider les entrées',
-      message: `Supprimer toutes les fiches salaire de ${p.nom} ? (la personne et ses notes seront conservées)`,
+      title: 'Réinitialiser',
+      message: `Supprimer toutes les fiches de ${p.nom} et masquer ses notes de sa fiche ? (les notes restent visibles dans Notes Clients)`,
       onConfirm: () => {
-        deletePersonneData(p.key);
+        resetServeur(p.key);
+        setModal(null);
+        load();
+      },
+    });
+  };
+
+  const confirmReinitialiserTous = () => {
+    setModal({
+      title: 'Réinitialiser tous les serveurs',
+      message: 'Supprimer toutes les fiches et masquer les notes de tous les serveurs (sauf Pierre) ?',
+      onConfirm: () => {
+        resetAllServeurs();
         setModal(null);
         load();
       },
@@ -50,7 +62,14 @@ export default function Personnes() {
 
   return (
     <div className="page-container">
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Personnes</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Personnes</h1>
+        {personnes.filter((p) => p.key !== 'pierre').length > 0 && (
+          <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={confirmReinitialiserTous}>
+            Réinitialiser tous
+          </button>
+        )}
+      </div>
 
       {modal && (
         <Modal
@@ -67,28 +86,30 @@ export default function Personnes() {
 
       {personnes.map((p) => (
         <div key={p.key} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn btn-danger"
-            style={{ padding: '6px 10px', fontSize: 13 }}
-            onClick={() => confirmVider(p)}
-            title="Vider les entrées (fiches salaire)"
-          >
-            🗑️
-          </button>
+          {p.key !== 'pierre' && (
+            <button
+              className="btn btn-danger"
+              style={{ padding: '6px 10px', fontSize: 13 }}
+              onClick={() => confirmReinitialiser(p)}
+              title="Réinitialiser (fiches + notes masquées)"
+            >
+              ↺
+            </button>
+          )}
 
-          <Link to={`/personne/${p.key}`} style={{ flex: 1, fontWeight: 600, fontSize: 16, color: '#1f2937' }}>
+          <Link to={p.key === 'pierre' ? '/pierre' : `/personne/${p.key}`} style={{ flex: 1, fontWeight: 600, fontSize: 16, color: '#1f2937' }}>
             {p.nom}
           </Link>
           <span style={{ color: '#9ca3af', fontSize: 12 }}>{p.key}</span>
 
-          <button
+          {p.key !== 'pierre' && <button
             className="btn btn-danger"
             style={{ padding: '6px 10px', fontSize: 13 }}
             onClick={() => confirmSupprimer(p)}
             title="Supprimer la personne"
           >
             ✕
-          </button>
+          </button>}
         </div>
       ))}
     </div>
