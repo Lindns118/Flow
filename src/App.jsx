@@ -7,6 +7,8 @@ import Pierre from './pages/Pierre';
 import NotesClients from './pages/NotesClients';
 import Personnes from './pages/Personnes';
 import Prets from './pages/Prets';
+import AncienServeurs from './pages/AncienServeurs';
+import AncienServeur from './pages/AncienServeur';
 import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
 import { loadDataFromDrive, saveDataToDrive } from './googleDrive';
@@ -156,6 +158,7 @@ function Navbar({ onLogout, onImportHistorique }) {
           ))}
           <span onClick={handlePersonnesIconClick}>👥 Notes clients</span>
           <Link to="/prets" onClick={() => setShowPanel(false)}>📦 Prêts</Link>
+          <Link to="/anciens-serveurs" onClick={() => setShowPanel(false)}>👴 Anciens serveurs</Link>
           <span onClick={handleImport} style={{ color: '#f59e0b', cursor: 'pointer' }}>
             📥 Importer historique
           </span>
@@ -184,6 +187,8 @@ function AppContent({ onLogout, onImportHistorique }) {
         <Route path="/notes-clients" element={<NotesClients />} />
         <Route path="/personnes" element={<Personnes />} />
         <Route path="/prets" element={<Prets />} />
+        <Route path="/anciens-serveurs" element={<AncienServeurs />} />
+        <Route path="/ancien-serveur/:key" element={<AncienServeur />} />
       </Routes>
     </BrowserRouter>
   );
