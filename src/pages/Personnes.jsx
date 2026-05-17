@@ -39,7 +39,7 @@ export default function Personnes() {
   const confirmReinitialiserTous = () => {
     setModal({
       title: 'Réinitialiser tous',
-      message: 'Supprimer toutes les fiches et masquer les notes de tous les serveurs (Pierre inclus) ?',
+      message: 'Supprimer toutes les fiches et masquer les notes de tous les serveurs (sauf Pierre) ?',
       onConfirm: () => {
         resetTous();
         setModal(null);
