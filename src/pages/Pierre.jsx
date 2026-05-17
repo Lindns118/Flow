@@ -164,7 +164,19 @@ export default function Pierre() {
     doc.text('Pierre', margin, 12);
     doc.setFont(undefined, 'normal');
 
-    let y = 22;
+    let y = 20;
+
+    if (dette < 0) {
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(220, 38, 38);
+      doc.text(`Report dette : ${fmt(dette)} €`, margin, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      y += 8;
+    }
+
+    y += 2;
 
     // Left table: Fiches (Date | Type | H | Montant)
     const leftX = margin;
