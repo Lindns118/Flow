@@ -442,3 +442,35 @@ export function addAncienServeurEntry(serveur_key, montant, date) {
 export function deleteAncienServeurEntry(id) {
   saveAncienServeurEntries(getAncienServeurEntries().filter((e) => e.id !== id));
 }
+
+// Detect active note pairs (same personne/destinataire/date, opposite amounts) and hide them
+export function hideMatchingPairs() {
+  const notes = getNotes();
+  const hidden = new Set(getHiddenNotes());
+  const active = notes.filter((n) => !n.annulee && !hidden.has(n.id));
+
+  const toHide = new Set();
+  active.forEach((n) => {
+    if (toHide.has(n.id)) return;
+    const pair = active.find(
+      (m) =>
+        m.id !== n.id &&
+        !toHide.has(m.id) &&
+        (m.personne || '').toLowerCase() === (n.personne || '').toLowerCase() &&
+        m.destinataire_key === n.destinataire_key &&
+        m.date === n.date &&
+        Math.abs(Number(m.montant) + Number(n.montant)) < 0.001
+    );
+    if (pair) {
+      toHide.add(n.id);
+      toHide.add(pair.id);
+    }
+  });
+
+  if (toHide.size > 0) {
+    const newHidden = [...new Set([...getHiddenNotes(), ...toHide])];
+    localStorage.setItem('hiddenNotes', JSON.stringify(newHidden));
+    scheduleDriveSync();
+  }
+  return toHide.size;
+}

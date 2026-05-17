@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getNotes, saveNotes, deleteNote } from '../db';
+import { getNotes, saveNotes, deleteNote, getHiddenNotes, toggleNoteHidden, hideMatchingPairs } from '../db';
 import jsPDF from 'jspdf';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -7,16 +7,21 @@ const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 
 export default function NotesClients() {
   const [notes, setNotes] = useState([]);
+  const [hiddenIds, setHiddenIds] = useState(new Set());
+  const [showHidden, setShowHidden] = useState(false);
   const [showAnnulees, setShowAnnulees] = useState({});
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
-  const [triPar, setTriPar] = useState('serveur'); // 'serveur' | 'client'
+  const [triPar, setTriPar] = useState('serveur');
   const [search, setSearch] = useState('');
 
-  const load = () => setNotes(getNotes());
+  const load = () => {
+    hideMatchingPairs();
+    setNotes(getNotes());
+    setHiddenIds(new Set(getHiddenNotes()));
+  };
   useEffect(() => { load(); }, []);
 
-  // Filtrage par recherche (client ou serveur)
   const filteredNotes = notes.filter((n) => {
     if (!search.trim()) return true;
     const s = search.toLowerCase();
@@ -24,7 +29,6 @@ export default function NotesClients() {
       || (n.destinataire_nom || n.destinataire_key || '').toLowerCase().includes(s);
   });
 
-  // Groupement selon le tri choisi
   const grouped = filteredNotes.reduce((acc, n) => {
     const key = triPar === 'serveur'
       ? (n.destinataire_key || 'inconnu')
@@ -41,7 +45,16 @@ export default function NotesClients() {
     a.nom.localeCompare(b.nom, 'fr')
   );
 
+  const totalHiddenCount = [...hiddenIds].filter((id) =>
+    notes.find((n) => n.id === id && !n.annulee)
+  ).length;
+
   const handleDelete = (id) => { deleteNote(id); load(); };
+
+  const handleToggleHidden = (id) => {
+    toggleNoteHidden(id);
+    setHiddenIds(new Set(getHiddenNotes()));
+  };
 
   const handleEdit = (n) => {
     setEditId(n.id);
@@ -63,41 +76,33 @@ export default function NotesClients() {
 
   const toggleAnnulees = (key) => setShowAnnulees((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Export PDF global (tableau)
+  // Export PDF global
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
     const cols = [
-      { header: 'Date',    w: 22 },
-      { header: 'Nom',     w: 52 },
-      { header: 'Combien', w: 24 },
-      { header: 'Serveur', w: 32 },
-      { header: 'Date',    w: 20 },
-      { header: 'Serveur', w: 22 },
-      { header: 'OK',      w: 8  },
+      { header: 'Date', w: 22 }, { header: 'Nom', w: 52 }, { header: 'Combien', w: 24 },
+      { header: 'Serveur', w: 32 }, { header: 'Date', w: 20 }, { header: 'Serveur', w: 22 }, { header: 'OK', w: 8 },
     ];
     const rowH = 8;
     let y = 22;
 
-    doc.setFontSize(13);
-    doc.setFont(undefined, 'bold');
+    doc.setFontSize(13); doc.setFont(undefined, 'bold');
     doc.text('Notes Clients' + (search.trim() ? ` — "${search.trim()}"` : ''), margin, 12);
     doc.setFont(undefined, 'normal');
 
     const activeNotes = filteredNotes
-      .filter((n) => !n.annulee)
+      .filter((n) => !n.annulee && !hiddenIds.has(n.id))
       .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
     const drawRow = (cells, bold = false) => {
       let x = margin;
-      doc.setFontSize(bold ? 8.5 : 8);
-      doc.setFont(undefined, bold ? 'bold' : 'normal');
+      doc.setFontSize(bold ? 8.5 : 8); doc.setFont(undefined, bold ? 'bold' : 'normal');
       cols.forEach((col, i) => {
         doc.rect(x, y, col.w, rowH);
         if (cells[i]) {
           let txt = String(cells[i]);
-          const maxW = col.w - 2;
-          while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
+          while (doc.getTextWidth(txt) > col.w - 2 && txt.length > 1) txt = txt.slice(0, -1);
           doc.text(txt, x + 1.2, y + rowH - 2.2);
         }
         x += col.w;
@@ -110,27 +115,23 @@ export default function NotesClients() {
     activeNotes.forEach((n) => {
       drawRow([fmtDate(n.date), n.personne || '', fmt(n.montant) + ' €', n.destinataire_nom || n.destinataire_key || '', '', '', '']);
     });
-
     doc.save('notes-clients.pdf');
   };
 
-  // Export PDF par serveur ou par client
+  // Export PDF groupé
   const exportPDFGroupe = (groupBy) => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
     const rowH = 7;
     let y = 20;
 
-    doc.setFontSize(13);
-    doc.setFont(undefined, 'bold');
+    doc.setFontSize(13); doc.setFont(undefined, 'bold');
     const title = (groupBy === 'serveur' ? 'Notes par serveur' : 'Notes par client')
       + (search.trim() ? ` — "${search.trim()}"` : '');
-    doc.text(title, margin, 12);
-    doc.setFont(undefined, 'normal');
+    doc.text(title, margin, 12); doc.setFont(undefined, 'normal');
 
-    // Build groups from filtered active notes
     const grp = {};
-    filteredNotes.filter((n) => !n.annulee).forEach((n) => {
+    filteredNotes.filter((n) => !n.annulee && !hiddenIds.has(n.id)).forEach((n) => {
       const k = groupBy === 'serveur'
         ? (n.destinataire_key || 'inconnu')
         : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
@@ -157,44 +158,30 @@ export default function NotesClients() {
 
     groups.forEach((group) => {
       const total = group.notes.reduce((a, b) => a + b.montant, 0);
-
       if (y > 268) { doc.addPage(); y = 20; }
-
-      // Section header
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'bold');
+      doc.setFontSize(9); doc.setFont(undefined, 'bold');
       doc.setTextColor(37, 99, 235);
       doc.text(`${group.nom.toUpperCase()}`, margin, y);
       doc.setTextColor(total < 0 ? 220 : 22, total < 0 ? 38 : 163, total < 0 ? 38 : 74);
       doc.text(`${fmt(total)} €`, margin + 70, y);
-      doc.setTextColor(0, 0, 0);
-      y += 5;
-
-      // Column headers
+      doc.setTextColor(0, 0, 0); y += 5;
       doc.setFontSize(7.5);
       let x = margin;
       [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
       y += rowH;
-
-      // Rows
       [...group.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).forEach((n) => {
         if (y > 278) { doc.addPage(); y = 20; }
-        doc.setFontSize(7.5);
-        x = margin;
+        doc.setFontSize(7.5); x = margin;
         const row = groupBy === 'serveur'
           ? [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']
           : [n.destinataire_nom || n.destinataire_key || '', fmtDate(n.date), fmt(n.montant) + ' €'];
         row.forEach((val, i) => { drawCell(x, y, cols[i].w, val, false); x += cols[i].w; });
         y += rowH;
       });
-
-      // Total row
-      doc.setFontSize(7.5);
-      x = margin;
+      doc.setFontSize(7.5); x = margin;
       ['Total', '', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, cols[i].w, val, true); x += cols[i].w; });
       y += rowH + 6;
     });
-
     doc.save(`notes-${groupBy}.pdf`);
   };
 
@@ -229,8 +216,8 @@ export default function NotesClients() {
         />
       </div>
 
-      {/* Export buttons */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+      {/* Actions bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={exportPDF}>
           Export PDF global
         </button>
@@ -240,6 +227,15 @@ export default function NotesClients() {
         <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('client')}>
           Export par client
         </button>
+        {totalHiddenCount > 0 && (
+          <button
+            className={showHidden ? 'btn btn-primary' : 'btn btn-secondary'}
+            style={{ fontSize: 12, padding: '5px 12px', marginLeft: 'auto' }}
+            onClick={() => setShowHidden((v) => !v)}
+          >
+            {showHidden ? 'Masquer cachées' : `Voir cachées (${totalHiddenCount})`}
+          </button>
+        )}
       </div>
 
       {sortedGroups.length === 0 && (
@@ -249,14 +245,15 @@ export default function NotesClients() {
       )}
 
       {sortedGroups.map(([key, group]) => {
-        const activeNotes = group.notes.filter((n) => !n.annulee);
+        const activeNotes = group.notes.filter((n) => !n.annulee && !hiddenIds.has(n.id));
+        const hiddenNotes = group.notes.filter((n) => !n.annulee && hiddenIds.has(n.id));
         const annuleesNotes = group.notes.filter((n) => n.annulee);
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
 
         const sorted = (arr) => [...arr].sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
-        const renderNote = (n) => (
+        const renderNote = (n, isHidden = false) => (
           <div key={n.id}>
             {editId === n.id ? (
               <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
@@ -274,11 +271,15 @@ export default function NotesClients() {
                 </div>
               </div>
             ) : (
-              <div className="nota-row" style={{ cursor: 'pointer' }} onClick={() => handleEdit(n)}>
+              <div
+                className="nota-row"
+                style={{ cursor: 'pointer', opacity: isHidden ? 0.45 : 1 }}
+                onClick={() => !isHidden && handleEdit(n)}
+              >
                 <span style={{ flex: 1, fontSize: 13 }}>
                   {triPar === 'serveur'
                     ? <>{n.personne} <span style={{ color: '#9ca3af' }}>→ {group.nom}</span></>
-                    : <>{group.nom} <span style={{ color: '#9ca3af' }}>→ {n.destinataire_nom}</span></>
+                    : <>{group.nom} <span style={{ color: '#9ca3af' }}>→ {n.destinataire_nom}</>
                   }
                   {' '}({fmtDate(n.date)})
                 </span>
@@ -286,14 +287,24 @@ export default function NotesClients() {
                   {fmt(n.montant)} €
                 </span>
                 <button
+                  className="btn btn-secondary"
+                  style={{ marginLeft: 6, padding: '2px 7px', fontSize: 11 }}
+                  title={isHidden ? 'Afficher' : 'Cacher'}
+                  onClick={(e) => { e.stopPropagation(); handleToggleHidden(n.id); }}
+                >
+                  {isHidden ? '👁' : '⊘'}
+                </button>
+                <button
                   className="btn btn-danger"
-                  style={{ marginLeft: 8, padding: '2px 8px', fontSize: 12 }}
+                  style={{ marginLeft: 4, padding: '2px 8px', fontSize: 12 }}
                   onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }}
                 >✕</button>
               </div>
             )}
           </div>
         );
+
+        if (activeNotes.length === 0 && (!showHidden || hiddenNotes.length === 0) && annuleesNotes.length === 0) return null;
 
         return (
           <div key={key} className="card">
@@ -303,6 +314,9 @@ export default function NotesClients() {
                 <div style={{ fontWeight: 700, color: total <= 0 ? '#dc2626' : '#16a34a', fontSize: 15 }}>
                   {fmt(total)} €
                 </div>
+                {hiddenNotes.length > 0 && (
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>({hiddenNotes.length} cachée{hiddenNotes.length > 1 ? 's' : ''})</span>
+                )}
               </div>
               {annuleesNotes.length > 0 && (
                 <button
@@ -315,11 +329,18 @@ export default function NotesClients() {
               )}
             </div>
 
-            {activeNotes.length === 0 && (
+            {activeNotes.length === 0 && !showHidden && (
               <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note active</div>
             )}
 
-            {sorted(activeNotes).map(renderNote)}
+            {sorted(activeNotes).map((n) => renderNote(n, false))}
+
+            {showHidden && hiddenNotes.length > 0 && (
+              <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 600 }}>CACHÉES</div>
+                {sorted(hiddenNotes).map((n) => renderNote(n, true))}
+              </div>
+            )}
 
             {showAnn && annuleesNotes.length > 0 && (
               <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
