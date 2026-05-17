@@ -102,7 +102,7 @@ export default function Pierre() {
     setEditData({
       date: f.date,
       heures: String(f.heures || ''),
-      montantDirect: String(f.type === 'retrait' ? f.montant : ''),
+      montantDirect: String(f.type === 'retrait' ? Math.abs(f.montant) : ''),
       notes: f.notes || '',
       type: f.type || 'salaire',
     });
