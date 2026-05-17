@@ -6,9 +6,10 @@ import Personne from './pages/Personne';
 import Pierre from './pages/Pierre';
 import NotesClients from './pages/NotesClients';
 import Personnes from './pages/Personnes';
-import { getPersonnes, getAllData, setAllData, setDriveSyncCallback } from './db';
+import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
 import { loadDataFromDrive, saveDataToDrive } from './googleDrive';
+import { historicalNotes } from './historicalNotes';
 
 function LoginPage({ onLogin }) {
   const [loading, setLoading] = useState(false);
@@ -61,13 +62,25 @@ function LoginPage({ onLogin }) {
   );
 }
 
-function Navbar({ onLogout }) {
+function Navbar({ onLogout, onImportHistorique }) {
   const [showPanel, setShowPanel] = useState(false);
   const [personnes, setPersonnes] = useState([]);
+  const [importMsg, setImportMsg] = useState('');
   const clickCountRef = useRef(0);
   const timerRef = useRef(null);
   const navigate = useNavigate();
   const user = getUserInfo();
+
+  const handleImport = () => {
+    const existing = getNotes();
+    const existingIds = new Set(existing.map((n) => n.id));
+    const toAdd = historicalNotes.filter((n) => !existingIds.has(n.id));
+    if (toAdd.length === 0) { setImportMsg('Déjà importé'); return; }
+    saveNotes([...existing, ...toAdd]);
+    onImportHistorique();
+    setImportMsg(`✓ ${toAdd.length} notes importées`);
+    setTimeout(() => setImportMsg(''), 3000);
+  };
 
   const handleTitleClick = () => {
     clickCountRef.current += 1;
@@ -116,16 +129,20 @@ function Navbar({ onLogout }) {
             </Link>
           ))}
           <span onClick={handlePersonnesIconClick}>👥 Notes clients</span>
+          <span onClick={handleImport} style={{ color: '#f59e0b', cursor: 'pointer' }}>
+            📥 Importer historique
+          </span>
+          {importMsg && <span style={{ color: '#10b981', fontSize: 12 }}>{importMsg}</span>}
         </div>
       )}
     </div>
   );
 }
 
-function AppContent({ onLogout }) {
+function AppContent({ onLogout, onImportHistorique }) {
   return (
     <BrowserRouter basename="/Flow">
-      <Navbar onLogout={onLogout} />
+      <Navbar onLogout={onLogout} onImportHistorique={onImportHistorique} />
       <Routes>
         <Route path="/" element={<Calculator />} />
         <Route path="/personne/:key" element={<Personne />} />
@@ -185,7 +202,11 @@ function App() {
     </div>
   );
 
-  return <AppContent onLogout={handleLogout} />;
+  const handleImportHistorique = () => {
+    saveDataToDrive(getAllData());
+  };
+
+  return <AppContent onLogout={handleLogout} onImportHistorique={handleImportHistorique} />;
 }
 
 export default App;
