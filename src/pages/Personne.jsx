@@ -92,7 +92,20 @@ export default function Personne() {
     doc.text(personne?.nom || key, margin, 12);
     doc.setFont(undefined, 'normal');
 
-    let y = 22;
+    let y = 20;
+
+    // Report dette en tête si négatif
+    if (dette < 0) {
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(220, 38, 38);
+      doc.text(`Report dette : ${fmt(dette)} €`, margin, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      y += 8;
+    }
+
+    y += 2;
 
     // Left table: Salaires (Date | Montant)
     const leftX = margin;
