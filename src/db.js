@@ -1,3 +1,35 @@
+// --- Drive sync ---
+let driveSyncCallback = null;
+let syncTimer = null;
+
+export function setDriveSyncCallback(fn) {
+  driveSyncCallback = fn;
+}
+
+function scheduleDriveSync() {
+  if (!driveSyncCallback) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(driveSyncCallback, 2000);
+}
+
+export function getAllData() {
+  return {
+    personnes: getPersonnes(),
+    fiches: getFiches(),
+    notes: getNotes(),
+    hiddenNotes: getHiddenNotes(),
+    fichesPierre: getFichesPierre(),
+  };
+}
+
+export function setAllData(data) {
+  if (data?.personnes !== undefined) localStorage.setItem('personnes', JSON.stringify(data.personnes));
+  if (data?.fiches !== undefined) localStorage.setItem('fiches', JSON.stringify(data.fiches));
+  if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
+  if (data?.hiddenNotes !== undefined) localStorage.setItem('hiddenNotes', JSON.stringify(data.hiddenNotes));
+  if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
+}
+
 // slugify: normalize name to slug
 export function slugify(str) {
   return str
@@ -19,6 +51,7 @@ export function getPersonnes() {
 
 export function savePersonnes(personnes) {
   localStorage.setItem('personnes', JSON.stringify(personnes));
+  scheduleDriveSync();
 }
 
 export function addPersonne(nom) {
@@ -43,6 +76,7 @@ export function getFiches() {
 
 export function saveFiches(fiches) {
   localStorage.setItem('fiches', JSON.stringify(fiches));
+  scheduleDriveSync();
 }
 
 export function addFiche(personne_key, personne_nom, date, montant, type) {
@@ -80,6 +114,7 @@ export function getNotes() {
 
 export function saveNotes(notes) {
   localStorage.setItem('notes', JSON.stringify(notes));
+  scheduleDriveSync();
 }
 
 export function addNote({ personne, montant, destinataire_key, destinataire_nom, date }) {
@@ -128,6 +163,7 @@ export function toggleNoteHidden(id) {
     hidden.push(id);
     localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
   }
+  scheduleDriveSync();
 }
 
 export function getHiddenNotes() {
@@ -149,6 +185,7 @@ export function getFichesPierre() {
 
 export function saveFichesPierre(fiches) {
   localStorage.setItem('fichesPierre', JSON.stringify(fiches));
+  scheduleDriveSync();
 }
 
 export function addFichePierre({ date, heures, notes }) {
