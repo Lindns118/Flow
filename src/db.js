@@ -220,21 +220,18 @@ export function saveFichesPierre(fiches) {
   scheduleDriveSync();
 }
 
-export function addFichePierre({ date, heures, notes }) {
+// type: 'salaire' (heures × 10) | 'retrait' (montant direct)
+export function addFichePierre({ date, heures, montantDirect, notes, type = 'salaire' }) {
   const fiches = getFichesPierre();
-  const montant = Number(heures) * 10;
   const mois = date.substring(0, 7);
-  const existing = fiches.find((f) => f.date === date);
-  if (existing) {
-    existing.heures = Number(heures);
-    existing.montant = montant;
-    existing.notes = notes || '';
-    existing.mois = mois;
-    saveFichesPierre(fiches);
-    return existing.id;
-  }
+  const montant = type === 'retrait' ? Number(montantDirect) : Number(heures) * 10;
   const id = String(Date.now() + Math.random());
-  fiches.push({ id, date, mois, heures: Number(heures), montant, notes: notes || '' });
+  fiches.push({
+    id, date, mois, type,
+    heures: type === 'salaire' ? Number(heures) : 0,
+    montant,
+    notes: notes || '',
+  });
   saveFichesPierre(fiches);
   return id;
 }
@@ -249,15 +246,21 @@ export function deleteFichesPierreMois(mois) {
   saveFichesPierre(fiches);
 }
 
-export function updateFichePierre(id, { date, heures, notes }) {
+export function updateFichePierre(id, { date, heures, montantDirect, notes, type }) {
   const fiches = getFichesPierre();
   const fiche = fiches.find((f) => f.id === id);
   if (!fiche) return;
   fiche.date = date;
-  fiche.heures = Number(heures);
-  fiche.montant = Number(heures) * 10;
   fiche.mois = date.substring(0, 7);
+  fiche.type = type || fiche.type || 'salaire';
   fiche.notes = notes || '';
+  if (fiche.type === 'retrait') {
+    fiche.montant = Number(montantDirect);
+    fiche.heures = 0;
+  } else {
+    fiche.heures = Number(heures);
+    fiche.montant = Number(heures) * 10;
+  }
   saveFichesPierre(fiches);
 }
 
