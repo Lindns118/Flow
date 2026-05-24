@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { getAncienServeurs, addAncienServeur, deleteAncienServeur, getAncienServeurEntries } from '../db';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -8,13 +8,14 @@ export default function AncienServeurs() {
   const [serveurs, setServeurs] = useState([]);
   const [entries, setEntries] = useState([]);
   const [nom, setNom] = useState('');
+  const location = useLocation();
 
   const load = () => {
     setServeurs(getAncienServeurs());
     setEntries(getAncienServeurEntries());
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [location]);
 
   const handleAdd = () => {
     if (!nom.trim()) return;
