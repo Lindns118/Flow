@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   getPersonnes, getFiches, getNotes, getHiddenNotes,
   deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur, getDette,
-  getBopGlobal, setBopGlobal, getDettes, saveDettes,
+  getBopGlobal, setBopGlobal, getDettes, saveDettes, deletePersonne, archiveToAncienServeur,
 } from '../db';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -13,6 +13,7 @@ const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 
 export default function Personne() {
   const { key } = useParams();
+  const navigate = useNavigate();
   const [personne, setPersonne] = useState(null);
   const [fiches, setFiches] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -21,6 +22,8 @@ export default function Personne() {
   const [bopInput, setBopInput] = useState('');
   const [bkInput, setBkInput] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmSupprimer, setConfirmSupprimer] = useState(false);
   const [dette, setDette] = useState(0);
   const [showDetteEdit, setShowDetteEdit] = useState(false);
   const [detteInput, setDetteInput] = useState('');
@@ -295,6 +298,30 @@ export default function Personne() {
           </div>
         </div>
       )}
+      {confirmArchive && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Archiver {personne.nom}</h3>
+            <p>Déplacer {personne.nom} vers Anciens Serveurs ? Sa dette actuelle sera copiée comme dette de départ. Ses fiches salaire seront supprimées.</p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmArchive(false)}>Annuler</button>
+              <button className="btn btn-danger" onClick={() => { archiveToAncienServeur(key); navigate('/anciens-serveurs'); }}>Archiver</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmSupprimer && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Supprimer {personne.nom}</h3>
+            <p>Supprimer {personne.nom} et toutes ses fiches salaire ? (les notes clients ne seront pas supprimées)</p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmSupprimer(false)}>Annuler</button>
+              <button className="btn btn-danger" onClick={() => { deletePersonne(key); navigate(-1); }}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dette initiale */}
       {dette < 0 && !showDetteEdit && (
@@ -363,6 +390,8 @@ export default function Personne() {
           <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
           <button className="btn btn-primary" onClick={exportPDF}>Export PDF</button>
           <button className="btn btn-secondary" onClick={exportWord}>Export Word</button>
+          <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={() => setConfirmArchive(true)} title="Archiver en ancien serveur">👴</button>
+          <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={() => setConfirmSupprimer(true)} title="Supprimer la personne">✕</button>
         </div>
       </div>
 
