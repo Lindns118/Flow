@@ -23,6 +23,7 @@ export default function Calculator() {
   const [pierreDate, setPierreDate] = useState(today());
   const [personnesList, setPersonnesList] = useState([]);
   const [saveMsg, setSaveMsg] = useState('');
+  const [rowMsgs, setRowMsgs] = useState({});
   const [pretForm, setPretForm] = useState({ type: 'emprunt', produit: '', nombre: '1', lieu: '', date: today() });
   const [sessionPrets, setSessionPrets] = useState([]);
 
@@ -41,6 +42,10 @@ export default function Calculator() {
   const totalPersonnes = personneResults.reduce((a, b) => a + b, 0);
 
   const flashMsg = (msg) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2500); };
+  const flashRowMsg = (i, msg) => {
+    setRowMsgs((prev) => ({ ...prev, [i]: msg }));
+    setTimeout(() => setRowMsgs((prev) => { const n = { ...prev }; delete n[i]; return n; }), 2500);
+  };
 
   const handleSavePret = () => {
     if (!pretForm.produit || !pretForm.lieu) return;
@@ -57,13 +62,13 @@ export default function Calculator() {
     // Pierre a son propre système de fiches — ne pas l'ajouter aux serveurs normaux
     if (p.key === 'pierre' || slugify(nom) === 'pierre') {
       addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
-      flashMsg('✓ Fiche Pierre sauvegardée');
+      flashRowMsg(i, '✓ Fiche Pierre sauvegardée');
       return;
     }
     const personne = addPersonne(nom);
     addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
     setPersonnesList(getPersonnes());
-    flashMsg(`✓ Sauvegardé: ${personne.nom}`);
+    flashRowMsg(i, `✓ Sauvegardé: ${personne.nom}`);
   };
 
   const handleSaveNote = (i) => {
@@ -284,6 +289,11 @@ export default function Calculator() {
                 {p.nom && <strong style={{ color: '#374151', marginRight: 6 }}>{p.nom}</strong>}
                 {fmt(parseFloat(p.valeur) || 0)} × H({fmt(H)}) = <strong>{fmt(personneResults[i])}</strong>
               </div>
+              {rowMsgs[i] && (
+                <div style={{ marginTop: 4, textAlign: 'right', fontSize: 12, color: '#065f46', background: '#d1fae5', borderRadius: 6, padding: '3px 10px' }}>
+                  {rowMsgs[i]}
+                </div>
+              )}
             </div>
           ))}
           <button className="btn btn-secondary" onClick={addPersonRow} style={{ marginBottom: 12 }}>+ Ajouter une personne</button>
