@@ -150,6 +150,21 @@ export function renamePersonne(key, newNom) {
   if (p) { p.nom = newNom; savePersonnes(personnes); }
 }
 
+export function archiveToAncienServeur(key) {
+  const personnes = getPersonnes();
+  const p = personnes.find((s) => s.key === key);
+  if (!p) return;
+  const dette = getDette(key);
+  const anciens = getAncienServeurs();
+  if (!anciens.find((s) => s.key === key)) {
+    const entry = { id: String(Date.now()), nom: p.nom, key };
+    if (dette < 0) entry.detteInitiale = dette;
+    anciens.push(entry);
+    saveAncienServeurs(anciens);
+  }
+  deletePersonne(key);
+}
+
 // --- Dettes (carry-over balance between reset periods) ---
 export function getDettes() {
   try {
