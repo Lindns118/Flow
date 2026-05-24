@@ -434,11 +434,13 @@ export function addPret({ type, produit, nombre, lieu, date }) {
   return id;
 }
 
-export function togglePretClos(id) {
+export function togglePretClos(id, dateClos) {
   const prets = getPrets();
   const pret = prets.find((p) => p.id === id);
   if (!pret) return;
   pret.clos = !pret.clos;
+  if (pret.clos && dateClos) pret.dateClos = dateClos;
+  else delete pret.dateClos;
   savePrets(prets);
 }
 
