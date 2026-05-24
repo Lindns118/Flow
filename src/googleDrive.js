@@ -17,16 +17,6 @@ async function findFileId() {
   return data.files?.[0]?.id || null;
 }
 
-export async function loadDataFromDrive() {
-  const fileId = await findFileId();
-  if (!fileId) return null;
-  const res = await fetch(`${DRIVE_API}/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
-}
-
 async function findExportFileId() {
   const q = encodeURIComponent(`name='${EXPORT_FILE_NAME}' and trashed=false`);
   const res = await fetch(`${DRIVE_API}/files?q=${q}&fields=files(id)`, {
@@ -37,34 +27,58 @@ async function findExportFileId() {
   return data.files?.[0]?.id || null;
 }
 
+export async function loadDataFromDrive() {
+  const fileId = await findFileId();
+  if (!fileId) return null;
+  const res = await fetch(`${DRIVE_API}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// Fallback: load from the visible backup file if primary is missing/corrupted
+export async function loadBackupFromDrive() {
+  const fileId = await findExportFileId();
+  if (!fileId) return null;
+  const res = await fetch(`${DRIVE_API}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export function shouldExport() {
   const last = parseInt(localStorage.getItem(LAST_EXPORT_KEY) || '0');
   return Date.now() - last >= EXPORT_INTERVAL_MS;
 }
 
-export async function exportNotesToDrive(data) {
-  const body = JSON.stringify(data);
+async function uploadExportFile(body) {
   const fileId = await findExportFileId();
-
   if (fileId) {
-    await fetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
+    const res = await fetch(`${UPLOAD_API}/files/${fileId}?uploadType=media`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
       body,
     });
+    if (!res.ok) throw new Error('Échec de la mise à jour du backup Drive');
   } else {
     const metadata = JSON.stringify({ name: EXPORT_FILE_NAME });
     const form = new FormData();
     form.append('metadata', new Blob([metadata], { type: 'application/json' }));
     form.append('file', new Blob([body], { type: 'application/json' }));
-    await fetch(`${UPLOAD_API}/files?uploadType=multipart`, {
+    const res = await fetch(`${UPLOAD_API}/files?uploadType=multipart`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${getToken()}` },
       body: form,
     });
+    if (!res.ok) throw new Error('Échec de la création du backup Drive');
   }
-
   localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+}
+
+export async function exportNotesToDrive(data) {
+  await uploadExportFile(JSON.stringify(data));
 }
 
 export async function saveDataToDrive(data) {

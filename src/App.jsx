@@ -11,7 +11,7 @@ import AncienServeurs from './pages/AncienServeurs';
 import AncienServeur from './pages/AncienServeur';
 import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
-import { loadDataFromDrive, saveDataToDrive, exportNotesToDrive, shouldExport } from './googleDrive';
+import { loadDataFromDrive, loadBackupFromDrive, saveDataToDrive, exportNotesToDrive, shouldExport } from './googleDrive';
 import { historicalNotes } from './historicalNotes';
 
 function LoginPage({ onLogin }) {
@@ -64,12 +64,13 @@ function LoginPage({ onLogin }) {
   );
 }
 
-function Navbar({ onLogout, onImportHistorique }) {
+function Navbar({ onLogout, onImportHistorique, onManualExport }) {
   const [showPanel, setShowPanel] = useState(false);
   const [personnes, setPersonnes] = useState([]);
   const [importMsg, setImportMsg] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetMsg, setResetMsg] = useState('');
+  const [saveMsg, setSaveMsg] = useState('');
   const clickCountRef = useRef(0);
   const timerRef = useRef(null);
   const navigate = useNavigate();
@@ -160,6 +161,22 @@ function Navbar({ onLogout, onImportHistorique }) {
           </span>
           {importMsg && <span style={{ color: '#10b981', fontSize: 12 }}>{importMsg}</span>}
           <span
+            onClick={async () => {
+              setSaveMsg('...');
+              try {
+                await onManualExport();
+                setSaveMsg('✓ Sauvegardé');
+              } catch {
+                setSaveMsg('✗ Erreur');
+              }
+              setTimeout(() => setSaveMsg(''), 3000);
+            }}
+            style={{ color: '#60a5fa', cursor: 'pointer' }}
+          >
+            💾 Sauvegarder maintenant
+          </span>
+          {saveMsg && <span style={{ color: saveMsg.startsWith('✓') ? '#10b981' : '#ef4444', fontSize: 12 }}>{saveMsg}</span>}
+          <span
             onClick={() => setConfirmReset(true)}
             style={{ color: '#ef4444', cursor: 'pointer', fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 8, marginTop: 4 }}
           >
@@ -172,10 +189,10 @@ function Navbar({ onLogout, onImportHistorique }) {
   );
 }
 
-function AppContent({ onLogout, onImportHistorique }) {
+function AppContent({ onLogout, onImportHistorique, onManualExport }) {
   return (
     <BrowserRouter basename="/Flow">
-      <Navbar onLogout={onLogout} onImportHistorique={onImportHistorique} />
+      <Navbar onLogout={onLogout} onImportHistorique={onImportHistorique} onManualExport={onManualExport} />
       <Routes>
         <Route path="/" element={<NotesClients />} />
         <Route path="/calcul" element={<Calculator />} />
@@ -208,12 +225,19 @@ function App() {
       setExportToast('✓ Sauvegarde Drive effectuée');
       setTimeout(() => setExportToast(''), 5000);
     } catch {
-      // silent fail — will retry next session
+      setExportToast('⚠️ Sauvegarde Drive échouée');
+      setTimeout(() => setExportToast(''), 6000);
     }
   };
 
+  const handleManualExport = async () => {
+    await exportNotesToDrive(getAllData());
+  };
+
   const loadFromDrive = async () => {
-    const driveData = await loadDataFromDrive();
+    let driveData = await loadDataFromDrive();
+    // Fallback: if primary (appDataFolder) is missing, try visible backup
+    if (!driveData) driveData = await loadBackupFromDrive();
     if (driveData) setAllData(driveData);
     setupDriveSync();
     setDataLoaded(true);
@@ -262,14 +286,15 @@ function App() {
       {exportToast && (
         <div style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 9999,
-          background: '#10b981', color: '#fff', borderRadius: 8,
+          background: exportToast.startsWith('⚠️') ? '#f59e0b' : '#10b981',
+          color: '#fff', borderRadius: 8,
           padding: '10px 18px', fontSize: 14, fontWeight: 600,
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
         }}>
           {exportToast}
         </div>
       )}
-      <AppContent onLogout={handleLogout} onImportHistorique={handleImportHistorique} />
+      <AppContent onLogout={handleLogout} onImportHistorique={handleImportHistorique} onManualExport={handleManualExport} />
     </>
   );
 }
