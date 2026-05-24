@@ -154,6 +154,7 @@ export function addFiche(personne_key, personne_nom, date, montant, type) {
   if (type === 'bop') {
     setBopGlobal(personne_key, getBopGlobal(personne_key) + Number(montant));
   }
+  if (driveSyncCallback) driveSyncCallback();
   return id;
 }
 
@@ -492,6 +493,7 @@ export function addFichePierre({ date, heures, montantDirect, notes, type = 'sal
     notes: notes || '',
   });
   saveFichesPierre(fiches);
+  if (driveSyncCallback) driveSyncCallback();
   return id;
 }
 
