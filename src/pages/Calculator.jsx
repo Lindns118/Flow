@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { addFiche, addPersonne, addNote, getPersonnes, addFichePierre, slugify, addPret } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -138,21 +139,19 @@ export default function Calculator() {
         margin: '0 -16px 16px', padding: '8px 16px',
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
       }}>
-        <a
-          href="/Flow/"
+        <Link
+          to="/"
           style={{
             fontSize: 13, color: '#6b7280', textDecoration: 'none',
             padding: '4px 10px', borderRadius: 6, border: '1px solid #d1d5db',
             whiteSpace: 'nowrap', fontWeight: 600,
           }}
-        >← Accueil</a>
+        >← Accueil</Link>
         <div style={{ width: 1, height: 20, background: '#e5e7eb', flexShrink: 0 }} />
         {allServers.map((s) => (
-          <a
+          <Link
             key={s.key}
-            href={s.key === 'pierre' ? '/Flow/pierre' : `/Flow/personne/${s.key}`}
-            target="_blank"
-            rel="noreferrer"
+            to={s.key === 'pierre' ? '/pierre' : `/personne/${s.key}`}
             style={{
               fontSize: 13, fontWeight: 600, textDecoration: 'none',
               padding: '4px 12px', borderRadius: 20,
@@ -161,7 +160,7 @@ export default function Calculator() {
             }}
           >
             {s.nom}
-          </a>
+          </Link>
         ))}
       </div>
 
