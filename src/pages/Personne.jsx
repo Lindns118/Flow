@@ -4,6 +4,7 @@ import {
   getPersonnes, getFiches, getNotes, getHiddenNotes,
   deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur, getDette,
   getBopGlobal, setBopGlobal, getDettes, saveDettes, deletePersonne, archiveToAncienServeur,
+  annulerRemboursement,
 } from '../db';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -46,14 +47,21 @@ export default function Personne() {
   const salaires = fiches.filter((f) => f.personne_key === key && f.type === 'salaire');
   const bopFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bop');
   const bkFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bk');
+  // Cas 2 : fiches crédit générées par un remboursement d'une note d'une session passée
+  const rembFiches = fiches.filter((f) => f.personne_key === key && f.type === 'remboursement_note');
   const notesRecues = notes.filter((n) => n.destinataire_key === key && !hidden.includes(n.id));
+  // Cas 1 : notes actives remboursées pendant la session (annulee+rembourse, visibles sur fiche)
+  const notesCase1 = notesRecues.filter((n) => n.rembourse && !n.etaitCacheeAvantRembourse);
   const notesRecuesAll = notes.filter((n) => n.destinataire_key === key);
 
   const totalSalaires = salaires.reduce((a, b) => a + b.montant, 0);
   const totalNotes = notesRecues.filter((n) => !n.annulee).reduce((a, b) => a + b.montant, 0);
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
-  const totalGeneral = totalSalaires + totalNotes - totalBop - totalBk + dette;
+  const totalRemb = rembFiches.reduce((a, b) => a + b.montant, 0);
+  const totalGeneral = totalSalaires + totalNotes + totalRemb - totalBop - totalBk + dette;
+
+  const handleAnnulerRemboursement = (noteId) => { annulerRemboursement(noteId); load(); };
 
   const handleReset = () => {
     resetServeur(key);
@@ -419,21 +427,14 @@ export default function Personne() {
             {showAnnulees ? 'Masquer annulées' : 'Voir annulées'}
           </button>
         </div>
-        {notesRecues.filter((n) => !n.annulee || n.rembourse || showAnnulees).length === 0 && (
+        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse).length === 0 && (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>
         )}
-        {notesRecues.filter((n) => !n.annulee || n.rembourse || showAnnulees).map((n) => (
-          <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee && !n.rembourse ? 0.5 : 1 }}>
+        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse).map((n) => (
+          <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee ? 0.5 : 1 }}>
             <span style={{ flex: 1, fontSize: 13 }}>
               {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-              {n.rembourse && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
-                  remboursée{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}
-                </span>
-              )}
-              {n.annulee && !n.rembourse && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>
-              )}
+              {n.annulee && <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>}
             </span>
             <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
             <button className="delete-btn" onClick={() => handleHideNote(n.id)}>✕</button>
@@ -443,6 +444,42 @@ export default function Personne() {
           Total notes : {fmt(totalNotes)} €
         </div>
       </div>
+
+      {/* Notes remboursées */}
+      {(notesCase1.length > 0 || rembFiches.length > 0) && (
+        <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
+          <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées</div>
+          {/* Cas 1 : note active annulée par remboursement pendant la session */}
+          {notesCase1.map((n) => (
+            <div key={n.id} className="row-hover nota-row">
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                  remboursée{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}
+                </span>
+              </span>
+              <span style={{ fontWeight: 600, color: '#6b7280' }}>{fmt(n.montant)} € (soldée)</span>
+              <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(n.id)}>↩</button>
+            </div>
+          ))}
+          {/* Cas 2 : crédit issu d'un remboursement d'une note de session passée */}
+          {rembFiches.map((f) => (
+            <div key={f.id} className="row-hover nota-row">
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {f.notePersonne} ({f.noteDate ? f.noteDate.substring(8, 10) + '/' + f.noteDate.substring(5, 7) : ''})
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                  remboursé {f.date ? f.date.split('-').reverse().join('/') : ''}
+                </span>
+              </span>
+              <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(f.montant)} €</span>
+              <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(f.noteId)}>↩</button>
+            </div>
+          ))}
+          <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
+            Total remboursements : {fmt(totalRemb)} €
+          </div>
+        </div>
+      )}
 
       {/* BOP */}
       <div className="card" style={{ borderLeft: '4px solid #dc2626' }}>

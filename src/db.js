@@ -329,45 +329,72 @@ export function deleteNote(id) {
   saveNotes(notes);
 }
 
-export function annulerRemboursement(id) {
-  const notes = getNotes();
-  const note = notes.find((n) => n.id === id);
-  if (note) {
-    const etaitCachee = note.etaitCacheeAvantRembourse === true;
-    note.annulee = false;
-    note.rembourse = false;
-    delete note.rembourseDate;
-    delete note.etaitCacheeAvantRembourse;
-    saveNotes(notes);
-    if (etaitCachee) {
-      // La note était cachée avant le remboursement → la remettre cachée
-      const hidden = getHiddenNotes();
-      if (!hidden.includes(id)) hidden.push(id);
-      localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
-    } else {
-      // La note était visible → la laisser visible
-      const hidden = getHiddenNotes().filter((h) => h !== id);
-      localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
-    }
-    scheduleDriveSync();
-  }
-}
-
 export function rembourserNote(id, date) {
   const notes = getNotes();
   const note = notes.find((n) => n.id === id);
-  if (note) {
-    // Mémoriser si la note était cachée avant le remboursement (pour pouvoir annuler correctement)
-    note.etaitCacheeAvantRembourse = getHiddenNotes().includes(id);
+  if (!note || note.rembourse) return;
+
+  const etaitCachee = getHiddenNotes().includes(id);
+  note.rembourse = true;
+  note.etaitCacheeAvantRembourse = etaitCachee;
+  if (date) note.rembourseDate = date;
+
+  if (!etaitCachee) {
+    // Cas 1 : note active → on l'annule (les deux se compensent, total = 0)
+    // Elle reste visible sur la fiche dans la section "Notes remboursées"
     note.annulee = true;
-    note.rembourse = true;
-    if (date) note.rembourseDate = date;
-    saveNotes(notes);
-    // Toujours unhide : note remboursée visible sur la fiche jusqu'au prochain reset ou ↩
+  } else {
+    // Cas 2 : note d'une session passée (cachée) → créer une entrée fiche +montant
+    // La note reste cachée ; le crédit s'affiche via la fiche jusqu'au prochain reset
+    const ficheId = String(Date.now() + Math.random());
+    const fiches = getFiches();
+    fiches.push({
+      id: ficheId,
+      personne_key: note.destinataire_key,
+      personne_nom: note.destinataire_nom,
+      date: date || new Date().toISOString().slice(0, 10),
+      montant: note.montant,
+      type: 'remboursement_note',
+      noteId: id,
+      notePersonne: note.personne,
+      noteDate: note.date,
+    });
+    saveFiches(fiches);
+    note.rembourseeFicheId = ficheId;
+  }
+
+  saveNotes(notes);
+  // Cas 1 : déjà visible ; Cas 2 : reste cachée. Rien à changer dans hiddenNotes.
+  scheduleDriveSync();
+}
+
+export function annulerRemboursement(id) {
+  const notes = getNotes();
+  const note = notes.find((n) => n.id === id);
+  if (!note || !note.rembourse) return;
+
+  if (note.etaitCacheeAvantRembourse) {
+    // Cas 2 : supprimer la fiche crédit associée
+    if (note.rembourseeFicheId) {
+      saveFiches(getFiches().filter((f) => f.id !== note.rembourseeFicheId));
+    }
+    // Remettre la note dans hiddenNotes
+    const hidden = getHiddenNotes();
+    if (!hidden.includes(id)) hidden.push(id);
+    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+  } else {
+    // Cas 1 : remettre la note active
+    note.annulee = false;
     const hidden = getHiddenNotes().filter((h) => h !== id);
     localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
-    scheduleDriveSync();
   }
+
+  note.rembourse = false;
+  delete note.rembourseDate;
+  delete note.etaitCacheeAvantRembourse;
+  delete note.rembourseeFicheId;
+  saveNotes(notes);
+  scheduleDriveSync();
 }
 
 export function toggleNoteHidden(id) {
