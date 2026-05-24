@@ -87,7 +87,7 @@ export default function Calculator() {
       addFichePierre({ date: line.date || today(), montantDirect: parseFloat(line.montant), type: 'retrait', notes: `Note de ${line.personne}` });
       setSessionNotes((prev) => [{ id: Date.now(), personne: line.personne, destinataire_nom: 'Pierre', montant: -Math.abs(parseFloat(line.montant)), date: line.date }, ...prev]);
     } else {
-      const montant = parseFloat(line.montant);
+      const montant = -Math.abs(parseFloat(line.montant));
       const note = addNote({
         personne: line.personne,
         montant,
@@ -364,8 +364,11 @@ export default function Calculator() {
                 </div>
                 <div>
                   <div className="label-sm">Montant</div>
-                  <input className="input-field" type="number" placeholder="0" value={line.montant}
-                    onChange={(e) => updateNote(i, 'montant', e.target.value)} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>−</span>
+                    <input className="input-field" type="number" placeholder="0" value={line.montant}
+                      onChange={(e) => updateNote(i, 'montant', e.target.value)} style={{ flex: 1 }} />
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 36px', gap: 8, alignItems: 'end' }}>
