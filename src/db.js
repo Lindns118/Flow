@@ -38,6 +38,23 @@ export function setAllData(data) {
   if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
   if (data?.ancienServeurs !== undefined) localStorage.setItem('ancienServeurs', JSON.stringify(data.ancienServeurs));
   if (data?.ancienServeurEntries !== undefined) localStorage.setItem('ancienServeurEntries', JSON.stringify(data.ancienServeurEntries));
+  reconcilePersonnes();
+}
+
+// Ensure every server referenced in notes has a personne entry
+export function reconcilePersonnes() {
+  const notes = getNotes();
+  const personnes = getPersonnes();
+  const keys = new Set(personnes.map((p) => p.key));
+  let changed = false;
+  notes.forEach((n) => {
+    if (n.destinataire_key && n.destinataire_key !== 'pierre' && !keys.has(n.destinataire_key)) {
+      personnes.push({ key: n.destinataire_key, nom: n.destinataire_nom || n.destinataire_key });
+      keys.add(n.destinataire_key);
+      changed = true;
+    }
+  });
+  if (changed) savePersonnes(personnes);
 }
 
 // slugify: normalize name to slug
