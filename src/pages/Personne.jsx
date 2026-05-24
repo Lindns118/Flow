@@ -177,7 +177,7 @@ export default function Personne() {
     leftY += rowH;
 
     // Notes clients rows — actives normales + Case 1 barrées
-    const activeNotes = notesRecues.filter((n) => !n.annulee);
+    const activeNotes = notesRecues.filter((n) => !n.annulee && !n.rembourse);
     activeNotes.forEach((n) => {
       drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
       rightY += rowH;
