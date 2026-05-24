@@ -144,6 +144,12 @@ export function deletePersonne(key) {
   savePersonnes(personnes);
 }
 
+export function renamePersonne(key, newNom) {
+  const personnes = getPersonnes();
+  const p = personnes.find((p) => p.key === key);
+  if (p) { p.nom = newNom; savePersonnes(personnes); }
+}
+
 // --- Dettes (carry-over balance between reset periods) ---
 export function getDettes() {
   try {
