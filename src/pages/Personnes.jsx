@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonnes, deletePersonne, resetServeur, resetTous } from '../db';
+import { getPersonnes, deletePersonne, resetServeur, resetTous, renamePersonne } from '../db';
 
 function Modal({ title, message, onConfirm, onCancel }) {
   return (
@@ -20,6 +20,8 @@ function Modal({ title, message, onConfirm, onCancel }) {
 export default function Personnes() {
   const [personnes, setPersonnes] = useState([]);
   const [modal, setModal] = useState(null);
+  const [editKey, setEditKey] = useState(null);
+  const [editNom, setEditNom] = useState('');
 
   const load = () => setPersonnes(getPersonnes());
   useEffect(() => { load(); }, []);
@@ -92,24 +94,50 @@ export default function Personnes() {
               style={{ padding: '6px 10px', fontSize: 13 }}
               onClick={() => confirmReinitialiser(p)}
               title="Réinitialiser (fiches + notes masquées)"
-            >
-              ↺
-            </button>
+            >↺</button>
           )}
 
-          <Link to={p.key === 'pierre' ? '/pierre' : `/personne/${p.key}`} style={{ flex: 1, fontWeight: 600, fontSize: 16, color: '#1f2937' }}>
-            {p.nom}
-          </Link>
-          <span style={{ color: '#9ca3af', fontSize: 12 }}>{p.key}</span>
+          {editKey === p.key ? (
+            <>
+              <input
+                className="input-field"
+                value={editNom}
+                onChange={(e) => setEditNom(e.target.value)}
+                style={{ flex: 1, fontSize: 15 }}
+                autoFocus
+              />
+              <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 13 }}
+                onClick={() => {
+                  if (editNom.trim()) { renamePersonne(p.key, editNom.trim()); load(); }
+                  setEditKey(null);
+                }}
+              >✓</button>
+              <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 13 }}
+                onClick={() => setEditKey(null)}
+              >✕</button>
+            </>
+          ) : (
+            <>
+              <Link to={p.key === 'pierre' ? '/pierre' : `/personne/${p.key}`} style={{ flex: 1, fontWeight: 600, fontSize: 16, color: '#1f2937' }}>
+                {p.nom}
+              </Link>
+              {p.key !== 'pierre' && (
+                <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 13 }}
+                  onClick={() => { setEditKey(p.key); setEditNom(p.nom); }}
+                  title="Renommer"
+                >✏️</button>
+              )}
+            </>
+          )}
 
-          {p.key !== 'pierre' && <button
-            className="btn btn-danger"
-            style={{ padding: '6px 10px', fontSize: 13 }}
-            onClick={() => confirmSupprimer(p)}
-            title="Supprimer la personne"
-          >
-            ✕
-          </button>}
+          {editKey !== p.key && p.key !== 'pierre' && (
+            <button
+              className="btn btn-danger"
+              style={{ padding: '6px 10px', fontSize: 13 }}
+              onClick={() => confirmSupprimer(p)}
+              title="Supprimer la personne"
+            >✕</button>
+          )}
         </div>
       ))}
     </div>
