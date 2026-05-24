@@ -82,15 +82,21 @@ export default function Calculator() {
     const dest = line.destinataire === 'pierre'
       ? { key: 'pierre', nom: 'Pierre' }
       : personnesList.find((p) => p.key === line.destinataire) || { key: line.destinataire, nom: line.destinataire };
-    const montant = -Math.abs(parseFloat(line.montant));
-    const note = addNote({
-      personne: line.personne,
-      montant,
-      destinataire_key: dest.key,
-      destinataire_nom: dest.nom,
-      date: line.date || today(),
-    });
-    setSessionNotes((prev) => [note, ...prev]);
+    if (dest.key === 'pierre') {
+      // Notes pour Pierre → directement dans ses fichesPierre (retrait)
+      addFichePierre({ date: line.date || today(), montantDirect: parseFloat(line.montant), type: 'retrait', notes: `Note de ${line.personne}` });
+      setSessionNotes((prev) => [{ id: Date.now(), personne: line.personne, destinataire_nom: 'Pierre', montant: -Math.abs(parseFloat(line.montant)), date: line.date }, ...prev]);
+    } else {
+      const montant = -Math.abs(parseFloat(line.montant));
+      const note = addNote({
+        personne: line.personne,
+        montant,
+        destinataire_key: dest.key,
+        destinataire_nom: dest.nom,
+        date: line.date || today(),
+      });
+      setSessionNotes((prev) => [note, ...prev]);
+    }
     flashMsg('✓ Note enregistrée');
   };
 

@@ -347,19 +347,17 @@ export function rembourserNote(id, date) {
     // Cas 2 : note d'une session passée (cachée) → créer une entrée fiche +montant
     // La note reste cachée ; le crédit s'affiche via la fiche jusqu'au prochain reset
     const ficheId = String(Date.now() + Math.random());
-    const fiches = getFiches();
-    fiches.push({
-      id: ficheId,
-      personne_key: note.destinataire_key,
-      personne_nom: note.destinataire_nom,
-      date: date || new Date().toISOString().slice(0, 10),
-      montant: Math.abs(note.montant),
-      type: 'remboursement_note',
-      noteId: id,
-      notePersonne: note.personne,
-      noteDate: note.date,
-    });
-    saveFiches(fiches);
+    const ficheDate = date || new Date().toISOString().slice(0, 10);
+    if (note.destinataire_key === 'pierre') {
+      // Pierre : crédit dans fichesPierre
+      const fp = getFichesPierre();
+      fp.push({ id: ficheId, date: ficheDate, mois: ficheDate.substring(0, 7), type: 'remboursement_note', heures: 0, montant: Math.abs(note.montant), noteId: id, notePersonne: note.personne, noteDate: note.date });
+      saveFichesPierre(fp);
+    } else {
+      const fiches = getFiches();
+      fiches.push({ id: ficheId, personne_key: note.destinataire_key, personne_nom: note.destinataire_nom, date: ficheDate, montant: Math.abs(note.montant), type: 'remboursement_note', noteId: id, notePersonne: note.personne, noteDate: note.date });
+      saveFiches(fiches);
+    }
     note.rembourseeFicheId = ficheId;
   }
 
@@ -376,7 +374,11 @@ export function annulerRemboursement(id) {
   if (note.etaitCacheeAvantRembourse) {
     // Cas 2 : supprimer la fiche crédit associée
     if (note.rembourseeFicheId) {
-      saveFiches(getFiches().filter((f) => f.id !== note.rembourseeFicheId));
+      if (note.destinataire_key === 'pierre') {
+        saveFichesPierre(getFichesPierre().filter((f) => f.id !== note.rembourseeFicheId));
+      } else {
+        saveFiches(getFiches().filter((f) => f.id !== note.rembourseeFicheId));
+      }
     }
     // Remettre la note dans hiddenNotes
     const hidden = getHiddenNotes();

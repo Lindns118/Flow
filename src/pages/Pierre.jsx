@@ -405,9 +405,9 @@ export default function Pierre() {
                   <span style={{ width: 90, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
                   <span style={{
                     fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 10, marginRight: 6,
-                    background: f.type === 'retrait' ? '#fef2f2' : '#eff6ff',
-                    color: f.type === 'retrait' ? '#dc2626' : '#2563eb',
-                  }}>{f.type === 'retrait' ? 'Retrait' : 'Salaire'}</span>
+                    background: f.type === 'retrait' ? '#fef2f2' : f.type === 'remboursement_note' ? '#eff6ff' : '#f0fdf4',
+                    color: f.type === 'retrait' ? '#dc2626' : f.type === 'remboursement_note' ? '#2563eb' : '#15803d',
+                  }}>{f.type === 'retrait' ? 'Retrait' : f.type === 'remboursement_note' ? 'Remb.' : 'Salaire'}</span>
                   {f.type === 'salaire' && <span style={{ width: 50 }}>{f.heures}h</span>}
                   <span style={{ flex: 1, fontWeight: 600, color: f.type === 'retrait' ? '#dc2626' : undefined }}>{fmt(f.montant)} €</span>
                   {f.notes && <span style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>{f.notes}</span>}
@@ -482,7 +482,7 @@ export default function Pierre() {
               </div>
               <div>
                 <div className="label-sm">Montant</div>
-                <input className="input-field" type="number" placeholder="±0" value={noteForm.montant} onChange={(e) => setNoteForm({ ...noteForm, montant: e.target.value })} />
+                <input className="input-field" type="number" placeholder="0" value={noteForm.montant} onChange={(e) => setNoteForm({ ...noteForm, montant: e.target.value })} />
               </div>
             </div>
             <div style={{ marginBottom: 10 }}>
