@@ -28,7 +28,14 @@ export function getAllData() {
 }
 
 export function setAllData(data) {
-  if (data?.personnes !== undefined) localStorage.setItem('personnes', JSON.stringify(data.personnes));
+  if (data?.personnes !== undefined) {
+    // Merge Drive personnes with local — never silently drop a server
+    const local = getPersonnes();
+    const driveKeys = new Set(data.personnes.map((p) => p.key));
+    const merged = [...data.personnes];
+    local.forEach((p) => { if (!driveKeys.has(p.key)) merged.push(p); });
+    localStorage.setItem('personnes', JSON.stringify(merged));
+  }
   if (data?.fiches !== undefined) localStorage.setItem('fiches', JSON.stringify(data.fiches));
   if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
   if (data?.hiddenNotes !== undefined) localStorage.setItem('hiddenNotes', JSON.stringify(data.hiddenNotes));
