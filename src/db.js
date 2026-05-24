@@ -357,19 +357,15 @@ export function rembourserNote(id, date) {
   const notes = getNotes();
   const note = notes.find((n) => n.id === id);
   if (note) {
-    // Mémoriser si la note était cachée avant le remboursement
-    const etaitCachee = getHiddenNotes().includes(id);
+    // Mémoriser si la note était cachée avant le remboursement (pour pouvoir annuler correctement)
+    note.etaitCacheeAvantRembourse = getHiddenNotes().includes(id);
     note.annulee = true;
     note.rembourse = true;
-    note.etaitCacheeAvantRembourse = etaitCachee;
     if (date) note.rembourseDate = date;
     saveNotes(notes);
-    if (!etaitCachee) {
-      // Note visible → la garder visible sur la fiche (ne pas cacher)
-      const hidden = getHiddenNotes().filter((h) => h !== id);
-      localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
-    }
-    // Si elle était déjà cachée → ne pas la sortir de hiddenNotes
+    // Toujours unhide : note remboursée visible sur la fiche jusqu'au prochain reset ou ↩
+    const hidden = getHiddenNotes().filter((h) => h !== id);
+    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
     scheduleDriveSync();
   }
 }
