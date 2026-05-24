@@ -449,6 +449,14 @@ export function addAncienServeur(nom) {
   saveAncienServeurs(list);
 }
 
+export function setAncienServeurDette(key, montant) {
+  const list = getAncienServeurs();
+  const s = list.find((s) => s.key === key);
+  if (!s) return;
+  if (montant === 0) { delete s.detteInitiale; } else { s.detteInitiale = montant < 0 ? montant : -montant; }
+  saveAncienServeurs(list);
+}
+
 export function deleteAncienServeur(key) {
   saveAncienServeurs(getAncienServeurs().filter((s) => s.key !== key));
   saveAncienServeurEntries(getAncienServeurEntries().filter((e) => e.serveur_key !== key));
