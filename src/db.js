@@ -382,10 +382,18 @@ export function annulerRemboursement(id) {
     const hidden = getHiddenNotes();
     if (!hidden.includes(id)) hidden.push(id);
     localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
-  } else {
-    // Cas 1 : remettre la note active
+  } else if (note.etaitCacheeAvantRembourse === false) {
+    // Cas 1 vrai : note était active → la remettre active
     note.annulee = false;
     const hidden = getHiddenNotes().filter((h) => h !== id);
+    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+  } else {
+    // Note legacy (remboursée avec ancien code, etaitCacheeAvantRembourse inconnu)
+    // On la remet dans hiddenNotes pour que l'utilisateur puisse la re-rembourser
+    // correctement en Cas 2 depuis le Calculateur
+    note.annulee = false;
+    const hidden = getHiddenNotes();
+    if (!hidden.includes(id)) hidden.push(id);
     localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
   }
 
