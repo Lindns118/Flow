@@ -28,11 +28,11 @@ export default function AncienServeurs() {
     load();
   };
 
-  const getTotal = (key) => {
-    const e = entries.filter((e) => e.serveur_key === key);
+  const getTotal = (s) => {
+    const e = entries.filter((e) => e.serveur_key === s.key);
     const negTotal = e.filter((e) => e.montant < 0).reduce((a, b) => a + b.montant, 0);
     const posTotal = e.filter((e) => e.montant > 0).reduce((a, b) => a + b.montant, 0);
-    return negTotal * 0.6 + posTotal;
+    return (s.detteInitiale || 0) + negTotal * 0.6 + posTotal;
   };
 
   return (
@@ -58,7 +58,7 @@ export default function AncienServeurs() {
       )}
 
       {serveurs.map((s) => {
-        const total = getTotal(s.key);
+        const total = getTotal(s);
         return (
           <div key={s.key} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Link
