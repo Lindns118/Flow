@@ -129,10 +129,11 @@ export default function Personne() {
     const rightX = leftX + leftW + 8;
     const rightCols = [{ header: 'Client', w: 44 }, { header: 'Date', w: 22 }, { header: 'Montant', w: 26 }];
 
-    const drawRow = (startX, cols, cy, cells, bold = false) => {
+    const drawRow = (startX, cols, cy, cells, bold = false, strikethrough = false) => {
       let x = startX;
       doc.setFont(undefined, bold ? 'bold' : 'normal');
       doc.setFontSize(bold ? 8.5 : 8);
+      if (strikethrough) doc.setTextColor(150, 150, 150);
       cols.forEach((col, i) => {
         doc.rect(x, cy, col.w, rowH);
         const val = cells[i];
@@ -141,9 +142,15 @@ export default function Personne() {
           const maxW = col.w - 2;
           while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
           doc.text(txt, x + 1.2, cy + rowH - 1.8);
+          if (strikethrough) {
+            const tw = Math.min(doc.getTextWidth(String(val)), maxW);
+            doc.setLineWidth(0.3);
+            doc.line(x + 1.2, cy + rowH / 2, x + 1.2 + tw, cy + rowH / 2);
+          }
         }
         x += col.w;
       });
+      if (strikethrough) doc.setTextColor(0, 0, 0);
     };
 
     // Section labels above tables
@@ -169,19 +176,22 @@ export default function Personne() {
     drawRow(leftX, leftCols, leftY, ['Total', fmt(totalSalaires) + ' €'], true);
     leftY += rowH;
 
-    // Notes clients rows
+    // Notes clients rows — actives normales + Case 1 barrées
     const activeNotes = notesRecues.filter((n) => !n.annulee);
     activeNotes.forEach((n) => {
       drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
+      rightY += rowH;
+    });
+    notesCase1.forEach((n) => {
+      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], false, true);
       rightY += rowH;
     });
     // Notes total
     drawRow(rightX, rightCols, rightY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
     rightY += rowH;
 
-    // Notes remboursées — dans la même colonne que notes reçues
-    if (notesCase1.length > 0 || rembFiches.length > 0) {
-      // Ligne séparatrice + label
+    // Notes remboursées (Case 2 uniquement : crédits session passée)
+    if (rembFiches.length > 0) {
       doc.setFontSize(7.5);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(37, 99, 235);
@@ -190,10 +200,6 @@ export default function Personne() {
       doc.setFont(undefined, 'normal');
       doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
       rightY += rowH;
-      notesCase1.forEach((n) => {
-        drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.rembourseDate), fmt(n.montant) + ' (soldée)']);
-        rightY += rowH;
-      });
       rembFiches.forEach((f) => {
         drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
         rightY += rowH;
