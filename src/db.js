@@ -235,7 +235,7 @@ export function resetServeur(key) {
   deletePersonneData(key);
   const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
-  notes.filter((n) => n.destinataire_key === key && !n.rembourse).forEach((n) => hiddenSet.add(n.id));
+  notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
   scheduleDriveSync();
 }

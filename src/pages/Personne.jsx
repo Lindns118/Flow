@@ -46,7 +46,7 @@ export default function Personne() {
   const salaires = fiches.filter((f) => f.personne_key === key && f.type === 'salaire');
   const bopFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bop');
   const bkFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bk');
-  const notesRecues = notes.filter((n) => n.destinataire_key === key && (!hidden.includes(n.id) || n.rembourse));
+  const notesRecues = notes.filter((n) => n.destinataire_key === key && !hidden.includes(n.id));
   const notesRecuesAll = notes.filter((n) => n.destinataire_key === key);
 
   const totalSalaires = salaires.reduce((a, b) => a + b.montant, 0);
