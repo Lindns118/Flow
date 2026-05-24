@@ -37,6 +37,7 @@ export default function NotesClients() {
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [triPar, setTriPar] = useState('serveur');
+  const [sortDate, setSortDate] = useState('desc');
   const [search, setSearch] = useState('');
 
   const load = () => {
@@ -227,6 +228,11 @@ export default function NotesClients() {
             style={{ fontSize: 13, padding: '6px 14px' }}
             onClick={() => setTriPar('client')}
           >Par client</button>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 13, padding: '6px 14px' }}
+            onClick={() => setSortDate((s) => s === 'desc' ? 'asc' : 'desc')}
+          >{sortDate === 'desc' ? '↓ Récente' : '↑ Ancienne'}</button>
         </div>
       </div>
 
@@ -278,7 +284,11 @@ export default function NotesClients() {
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
 
-        const sorted = (arr) => [...arr].sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
+        const sorted = (arr) => [...arr].sort((a, b) =>
+          sortDate === 'desc'
+            ? (b.date || '').localeCompare(a.date || '')
+            : (a.date || '').localeCompare(b.date || '')
+        );
 
         const renderNote = (n, isHidden = false) => (
           <div key={n.id}>
