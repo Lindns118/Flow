@@ -9,7 +9,7 @@ import Personnes from './pages/Personnes';
 import Prets from './pages/Prets';
 import AncienServeurs from './pages/AncienServeurs';
 import AncienServeur from './pages/AncienServeur';
-import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous } from './db';
+import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous, reconcilePersonnes } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
 import { loadDataFromDrive, loadBackupFromDrive, saveDataToDrive, exportNotesToDrive, shouldExport } from './googleDrive';
 import { historicalNotes } from './historicalNotes';
@@ -239,6 +239,7 @@ function App() {
     // Fallback: if primary (appDataFolder) is missing, try visible backup
     if (!driveData) driveData = await loadBackupFromDrive();
     if (driveData) setAllData(driveData);
+    else reconcilePersonnes(); // also run on local-only data
     setupDriveSync();
     setDataLoaded(true);
   };
