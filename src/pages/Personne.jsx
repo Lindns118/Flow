@@ -58,7 +58,7 @@ export default function Personne() {
   const totalNotes = notesRecues.filter((n) => !n.annulee).reduce((a, b) => a + b.montant, 0);
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
-  const totalRemb = rembFiches.reduce((a, b) => a + b.montant, 0);
+  const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
   const totalGeneral = totalSalaires + totalNotes + totalRemb - totalBop - totalBk + dette;
 
   const handleAnnulerRemboursement = (noteId) => { annulerRemboursement(noteId); load(); };
@@ -471,7 +471,7 @@ export default function Personne() {
                   remboursé {f.date ? f.date.split('-').reverse().join('/') : ''}
                 </span>
               </span>
-              <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(f.montant)} €</span>
+              <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(Math.abs(f.montant))} €</span>
               <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(f.noteId)}>↩</button>
             </div>
           ))}
