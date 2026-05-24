@@ -333,13 +333,22 @@ export function annulerRemboursement(id) {
   const notes = getNotes();
   const note = notes.find((n) => n.id === id);
   if (note) {
+    const etaitCachee = note.etaitCacheeAvantRembourse === true;
     note.annulee = false;
     note.rembourse = false;
     delete note.rembourseDate;
+    delete note.etaitCacheeAvantRembourse;
     saveNotes(notes);
-    // Retirer de hiddenNotes pour que la note réapparaisse sur la fiche
-    const hidden = getHiddenNotes().filter((h) => h !== id);
-    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    if (etaitCachee) {
+      // La note était cachée avant le remboursement → la remettre cachée
+      const hidden = getHiddenNotes();
+      if (!hidden.includes(id)) hidden.push(id);
+      localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    } else {
+      // La note était visible → la laisser visible
+      const hidden = getHiddenNotes().filter((h) => h !== id);
+      localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    }
     scheduleDriveSync();
   }
 }
@@ -348,13 +357,19 @@ export function rembourserNote(id, date) {
   const notes = getNotes();
   const note = notes.find((n) => n.id === id);
   if (note) {
+    // Mémoriser si la note était cachée avant le remboursement
+    const etaitCachee = getHiddenNotes().includes(id);
     note.annulee = true;
     note.rembourse = true;
+    note.etaitCacheeAvantRembourse = etaitCachee;
     if (date) note.rembourseDate = date;
     saveNotes(notes);
-    // Retirer de hiddenNotes pour que la note reste visible sur la fiche
-    const hidden = getHiddenNotes().filter((h) => h !== id);
-    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    if (!etaitCachee) {
+      // Note visible → la garder visible sur la fiche (ne pas cacher)
+      const hidden = getHiddenNotes().filter((h) => h !== id);
+      localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    }
+    // Si elle était déjà cachée → ne pas la sortir de hiddenNotes
     scheduleDriveSync();
   }
 }
