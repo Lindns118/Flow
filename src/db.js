@@ -353,7 +353,7 @@ export function rembourserNote(id, date) {
       personne_key: note.destinataire_key,
       personne_nom: note.destinataire_nom,
       date: date || new Date().toISOString().slice(0, 10),
-      montant: note.montant,
+      montant: Math.abs(note.montant),
       type: 'remboursement_note',
       noteId: id,
       notePersonne: note.personne,
