@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getAncienServeurs, getAncienServeurEntries,
-  addAncienServeurEntry, deleteAncienServeurEntry,
+  addAncienServeurEntry, deleteAncienServeurEntry, setAncienServeurDette,
 } from '../db';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -17,6 +17,8 @@ export default function AncienServeur() {
   const [negDate, setNegDate] = useState(today());
   const [posInput, setPosInput] = useState('');
   const [posDate, setPosDate] = useState(today());
+  const [showDetteEdit, setShowDetteEdit] = useState(false);
+  const [detteInput, setDetteInput] = useState('');
 
   const load = () => {
     const s = getAncienServeurs().find((s) => s.key === key);
@@ -26,12 +28,13 @@ export default function AncienServeur() {
 
   useEffect(() => { load(); }, [key]);
 
+  const detteInitiale = serveur?.detteInitiale || 0;
   const negEntries = entries.filter((e) => e.montant < 0);
   const posEntries = entries.filter((e) => e.montant > 0);
   const negTotal = negEntries.reduce((a, b) => a + b.montant, 0);
   const posTotal = posEntries.reduce((a, b) => a + b.montant, 0);
   const negApplied = negTotal * 0.6;
-  const totalGeneral = negApplied + posTotal;
+  const totalGeneral = detteInitiale + negApplied + posTotal;
 
   const handleAddNeg = () => {
     if (!negInput) return;
@@ -52,6 +55,53 @@ export default function AncienServeur() {
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>
         {serveur?.nom || key}
       </h1>
+
+      {/* Dette initiale */}
+      {detteInitiale < 0 && !showDetteEdit && (
+        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Dette de départ : {fmt(detteInitiale)} €</span>
+          <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }}
+            onClick={() => { setDetteInput(String(detteInitiale)); setShowDetteEdit(true); }}
+          >Modifier</button>
+        </div>
+      )}
+      {detteInitiale === 0 && !showDetteEdit && (
+        <div style={{ marginBottom: 12 }}>
+          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px', color: '#6b7280' }}
+            onClick={() => { setDetteInput(''); setShowDetteEdit(true); }}
+          >+ Dette de départ</button>
+        </div>
+      )}
+      {showDetteEdit && (
+        <div style={{ background: '#fef2f2', borderLeft: '4px solid #dc2626', borderRadius: 8, padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>Dette de départ :</span>
+          <input
+            className="input-field"
+            type="number"
+            placeholder="-100.00"
+            value={detteInput}
+            onChange={(e) => setDetteInput(e.target.value)}
+            style={{ width: 120 }}
+          />
+          <button className="btn btn-danger" style={{ fontSize: 12, padding: '4px 12px' }}
+            onClick={() => {
+              const val = parseFloat(detteInput);
+              if (isNaN(val)) return;
+              setAncienServeurDette(key, val);
+              setShowDetteEdit(false);
+              load();
+            }}
+          >✓ Enregistrer</button>
+          {detteInitiale < 0 && (
+            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }}
+              onClick={() => { setAncienServeurDette(key, 0); setShowDetteEdit(false); load(); }}
+            >Supprimer</button>
+          )}
+          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }}
+            onClick={() => setShowDetteEdit(false)}
+          >Annuler</button>
+        </div>
+      )}
 
       {/* Dettes — comptées à 60% */}
       <div className="card" style={{ borderLeft: '4px solid #dc2626' }}>
@@ -147,6 +197,7 @@ export default function AncienServeur() {
       >
         Total : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+          {detteInitiale < 0 && <>{fmt(detteInitiale)} (départ) + </>}
           {fmt(negApplied)} (dettes 60%) + {fmt(posTotal)} (paiements 100%) = {fmt(totalGeneral)} €
         </div>
       </div>
