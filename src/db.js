@@ -329,6 +329,21 @@ export function deleteNote(id) {
   saveNotes(notes);
 }
 
+export function annulerRemboursement(id) {
+  const notes = getNotes();
+  const note = notes.find((n) => n.id === id);
+  if (note) {
+    note.annulee = false;
+    note.rembourse = false;
+    delete note.rembourseDate;
+    saveNotes(notes);
+    // Retirer de hiddenNotes pour que la note réapparaisse sur la fiche
+    const hidden = getHiddenNotes().filter((h) => h !== id);
+    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    scheduleDriveSync();
+  }
+}
+
 export function rembourserNote(id, date) {
   const notes = getNotes();
   const note = notes.find((n) => n.id === id);

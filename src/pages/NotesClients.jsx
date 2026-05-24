@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getNotes, saveNotes, deleteNote, getHiddenNotes, hideMatchingPairs } from '../db';
+import { getNotes, saveNotes, deleteNote, annulerRemboursement, getHiddenNotes, hideMatchingPairs } from '../db';
 import jsPDF from 'jspdf';
 
 const normName = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
@@ -375,11 +375,20 @@ export default function NotesClients() {
                     <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>
                       {fmt(n.montant)} €
                     </span>
-                    <button
-                      className="btn btn-danger"
-                      style={{ marginLeft: 8, padding: '2px 8px', fontSize: 12 }}
-                      onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }}
-                    >✕</button>
+                    {n.rembourse ? (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
+                        title="Annuler le remboursement"
+                        onClick={(e) => { e.stopPropagation(); annulerRemboursement(n.id); load(); }}
+                      >↩</button>
+                    ) : (
+                      <button
+                        className="btn btn-danger"
+                        style={{ marginLeft: 8, padding: '2px 8px', fontSize: 12 }}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }}
+                      >✕</button>
+                    )}
                   </div>
                 ))}
               </div>
