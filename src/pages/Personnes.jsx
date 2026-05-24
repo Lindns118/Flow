@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonnes, deletePersonne, resetServeur, resetTous, renamePersonne } from '../db';
+import { getPersonnes, deletePersonne, resetServeur, resetTous, renamePersonne, archiveToAncienServeur } from '../db';
 
 function Modal({ title, message, onConfirm, onCancel }) {
   return (
@@ -56,6 +56,18 @@ export default function Personnes() {
       message: `Supprimer ${p.nom} et toutes ses fiches salaire ? (les notes clients ne seront pas supprimées)`,
       onConfirm: () => {
         deletePersonne(p.key);
+        setModal(null);
+        load();
+      },
+    });
+  };
+
+  const confirmArchiver = (p) => {
+    setModal({
+      title: 'Archiver en ancien serveur',
+      message: `Déplacer ${p.nom} vers Anciens Serveurs ? Sa dette actuelle sera copiée comme dette de départ. Ses fiches salaire seront supprimées.`,
+      onConfirm: () => {
+        archiveToAncienServeur(p.key);
         setModal(null);
         load();
       },
@@ -131,12 +143,20 @@ export default function Personnes() {
           )}
 
           {editKey !== p.key && p.key !== 'pierre' && (
-            <button
-              className="btn btn-danger"
-              style={{ padding: '6px 10px', fontSize: 13 }}
-              onClick={() => confirmSupprimer(p)}
-              title="Supprimer la personne"
-            >✕</button>
+            <>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '6px 10px', fontSize: 13 }}
+                onClick={() => confirmArchiver(p)}
+                title="Archiver en ancien serveur"
+              >👴</button>
+              <button
+                className="btn btn-danger"
+                style={{ padding: '6px 10px', fontSize: 13 }}
+                onClick={() => confirmSupprimer(p)}
+                title="Supprimer la personne"
+              >✕</button>
+            </>
           )}
         </div>
       ))}
