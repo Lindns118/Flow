@@ -46,7 +46,7 @@ export default function Personne() {
   const salaires = fiches.filter((f) => f.personne_key === key && f.type === 'salaire');
   const bopFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bop');
   const bkFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bk');
-  const notesRecues = notes.filter((n) => n.destinataire_key === key && !hidden.includes(n.id));
+  const notesRecues = notes.filter((n) => n.destinataire_key === key && (!hidden.includes(n.id) || n.rembourse));
   const notesRecuesAll = notes.filter((n) => n.destinataire_key === key);
 
   const totalSalaires = salaires.reduce((a, b) => a + b.montant, 0);
@@ -419,17 +419,20 @@ export default function Personne() {
             {showAnnulees ? 'Masquer annulées' : 'Voir annulées'}
           </button>
         </div>
-        {notesRecues.filter((n) => !n.annulee || showAnnulees).length === 0 && (
+        {notesRecues.filter((n) => !n.annulee || n.rembourse || showAnnulees).length === 0 && (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>
         )}
-        {notesRecues.filter((n) => !n.annulee || showAnnulees).map((n) => (
-          <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee ? 0.5 : 1 }}>
+        {notesRecues.filter((n) => !n.annulee || n.rembourse || showAnnulees).map((n) => (
+          <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee && !n.rembourse ? 0.5 : 1 }}>
             <span style={{ flex: 1, fontSize: 13 }}>
               {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-              {n.annulee && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>
-                  {n.rembourse ? `remboursée${n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}` : 'annulée'}
+              {n.rembourse && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                  remboursée{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}
                 </span>
+              )}
+              {n.annulee && !n.rembourse && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>
               )}
             </span>
             <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>

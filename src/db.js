@@ -337,6 +337,10 @@ export function rembourserNote(id, date) {
     note.rembourse = true;
     if (date) note.rembourseDate = date;
     saveNotes(notes);
+    // Retirer de hiddenNotes pour que la note reste visible sur la fiche
+    const hidden = getHiddenNotes().filter((h) => h !== id);
+    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+    scheduleDriveSync();
   }
 }
 
