@@ -27,24 +27,57 @@ export function getAllData() {
   };
 }
 
+// Merge two arrays by id: local entries not in remote are kept (prevents data loss on refresh)
+function mergeById(local, remote) {
+  if (!remote?.length) return local || [];
+  if (!local?.length) return remote;
+  const remoteIds = new Set(remote.map((x) => x.id));
+  const localOnly = local.filter((x) => !remoteIds.has(x.id));
+  return [...remote, ...localOnly];
+}
+
+function mergeByKey(local, remote) {
+  if (!remote?.length) return local || [];
+  if (!local?.length) return remote;
+  const remoteKeys = new Set(remote.map((x) => x.key));
+  const localOnly = local.filter((x) => !remoteKeys.has(x.key));
+  return [...remote, ...localOnly];
+}
+
 export function setAllData(data) {
   if (data?.personnes !== undefined) {
-    // Merge Drive personnes with local — never silently drop a server
-    const local = getPersonnes();
-    const driveKeys = new Set(data.personnes.map((p) => p.key));
-    const merged = [...data.personnes];
-    local.forEach((p) => { if (!driveKeys.has(p.key)) merged.push(p); });
-    localStorage.setItem('personnes', JSON.stringify(merged));
+    localStorage.setItem('personnes', JSON.stringify(mergeByKey(getPersonnes(), data.personnes)));
   }
-  if (data?.fiches !== undefined) localStorage.setItem('fiches', JSON.stringify(data.fiches));
-  if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
-  if (data?.hiddenNotes !== undefined) localStorage.setItem('hiddenNotes', JSON.stringify(data.hiddenNotes));
-  if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
-  if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
-  if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
-  if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
-  if (data?.ancienServeurs !== undefined) localStorage.setItem('ancienServeurs', JSON.stringify(data.ancienServeurs));
-  if (data?.ancienServeurEntries !== undefined) localStorage.setItem('ancienServeurEntries', JSON.stringify(data.ancienServeurEntries));
+  // Arrays: merge by id so local entries not yet synced to Drive are preserved
+  if (data?.fiches !== undefined) {
+    localStorage.setItem('fiches', JSON.stringify(mergeById(getFiches(), data.fiches)));
+  }
+  if (data?.notes !== undefined) {
+    localStorage.setItem('notes', JSON.stringify(mergeById(getNotes(), data.notes)));
+  }
+  if (data?.fichesPierre !== undefined) {
+    localStorage.setItem('fichesPierre', JSON.stringify(mergeById(getFichesPierre(), data.fichesPierre)));
+  }
+  if (data?.prets !== undefined) {
+    localStorage.setItem('prets', JSON.stringify(mergeById(getPrets(), data.prets)));
+  }
+  if (data?.ancienServeurEntries !== undefined) {
+    localStorage.setItem('ancienServeurEntries', JSON.stringify(mergeById(getAncienServeurEntries(), data.ancienServeurEntries)));
+  }
+  if (data?.ancienServeurs !== undefined) {
+    localStorage.setItem('ancienServeurs', JSON.stringify(mergeByKey(getAncienServeurs(), data.ancienServeurs)));
+  }
+  // Objects: local takes priority (more recent resets/modifications)
+  if (data?.dettes !== undefined) {
+    localStorage.setItem('dettes', JSON.stringify({ ...data.dettes, ...getDettes() }));
+  }
+  if (data?.bopGlobaux !== undefined) {
+    localStorage.setItem('bopGlobaux', JSON.stringify({ ...data.bopGlobaux, ...getBopGlobaux() }));
+  }
+  // hiddenNotes: union of both (a hidden note stays hidden)
+  if (data?.hiddenNotes !== undefined) {
+    localStorage.setItem('hiddenNotes', JSON.stringify([...new Set([...getHiddenNotes(), ...data.hiddenNotes])]));
+  }
   reconcilePersonnes();
 }
 
