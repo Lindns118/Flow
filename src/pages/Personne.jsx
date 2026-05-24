@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   getPersonnes, getFiches, getNotes, getHiddenNotes,
   deleteFiche, toggleNoteHidden, addFiche, addPersonne, slugify, resetServeur, getDette,
-  getBopGlobal, setBopGlobal,
+  getBopGlobal, setBopGlobal, getDettes, saveDettes,
 } from '../db';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -22,6 +22,8 @@ export default function Personne() {
   const [bkInput, setBkInput] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
   const [dette, setDette] = useState(0);
+  const [showDetteEdit, setShowDetteEdit] = useState(false);
+  const [detteInput, setDetteInput] = useState('');
   const [bopGlobal, setBopGlobalState] = useState(0);
   const [bopGlobalInput, setBopGlobalInput] = useState('');
 
@@ -294,9 +296,64 @@ export default function Personne() {
         </div>
       )}
 
-      {dette < 0 && (
-        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626' }}>
-          Report période précédente : {fmt(dette)} €
+      {/* Dette initiale */}
+      {dette < 0 && !showDetteEdit && (
+        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Report période précédente : {fmt(dette)} €</span>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 11, padding: '2px 8px', marginLeft: 10 }}
+            onClick={() => { setDetteInput(String(dette)); setShowDetteEdit(true); }}
+          >Modifier</button>
+        </div>
+      )}
+      {dette === 0 && !showDetteEdit && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 12, padding: '4px 12px', color: '#6b7280' }}
+            onClick={() => { setDetteInput(''); setShowDetteEdit(true); }}
+          >+ Dette initiale</button>
+        </div>
+      )}
+      {showDetteEdit && (
+        <div style={{ background: '#fef2f2', borderLeft: '4px solid #dc2626', borderRadius: 8, padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>Dette initiale :</span>
+          <input
+            className="input-field"
+            type="number"
+            placeholder="-100.00"
+            value={detteInput}
+            onChange={(e) => setDetteInput(e.target.value)}
+            style={{ width: 120 }}
+          />
+          <button
+            className="btn btn-danger"
+            style={{ fontSize: 12, padding: '4px 12px' }}
+            onClick={() => {
+              const val = parseFloat(detteInput);
+              if (isNaN(val)) return;
+              const d = getDettes();
+              if (val === 0) { delete d[key]; } else { d[key] = val < 0 ? val : -val; }
+              saveDettes(d);
+              setDette(getDette(key));
+              setShowDetteEdit(false);
+            }}
+          >✓ Enregistrer</button>
+          {dette < 0 && (
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: 12, padding: '4px 12px' }}
+              onClick={() => {
+                const d = getDettes();
+                delete d[key];
+                saveDettes(d);
+                setDette(0);
+                setShowDetteEdit(false);
+              }}
+            >Supprimer</button>
+          )}
+          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setShowDetteEdit(false)}>Annuler</button>
         </div>
       )}
 
