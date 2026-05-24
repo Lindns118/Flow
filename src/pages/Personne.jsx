@@ -181,6 +181,29 @@ export default function Personne() {
 
     y = Math.max(leftY, rightY) + 8;
 
+    // Notes remboursées section
+    const rembCols = [{ header: 'Client', w: 44 }, { header: 'Date remb.', w: 28 }, { header: 'Montant', w: 26 }];
+    if (notesCase1.length > 0 || rembFiches.length > 0) {
+      doc.setFontSize(8.5);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(37, 99, 235);
+      doc.text('Notes remboursées', margin, y - 1);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(0, 0, 0);
+      drawRow(margin, rembCols, y, rembCols.map((c) => c.header), true);
+      y += rowH;
+      notesCase1.forEach((n) => {
+        drawRow(margin, rembCols, y, [n.personne || '', fmtDate(n.rembourseDate), fmt(n.montant) + ' € (soldée)']);
+        y += rowH;
+      });
+      rembFiches.forEach((f) => {
+        drawRow(margin, rembCols, y, [f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        y += rowH;
+      });
+      drawRow(margin, rembCols, y, ['Total remboursements', '', fmt(totalRemb) + ' €'], true);
+      y += rowH + 8;
+    }
+
     // BOP section
     const sectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
     if (bopFiches.length > 0) {
@@ -225,7 +248,7 @@ export default function Personne() {
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) - ${fmt(totalBop)} (BOP) - ${fmt(totalBk)} (BK)`;
+    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) - ${fmt(totalBop)} (BOP) - ${fmt(totalBk)} (BK)`;
     if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
