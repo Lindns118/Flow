@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import './index.css';
 import Calculator from './pages/Calculator';
 import Personne from './pages/Personne';
@@ -74,7 +74,9 @@ function Navbar({ onLogout, onImportHistorique, onManualExport }) {
   const clickCountRef = useRef(0);
   const timerRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const user = getUserInfo();
+  const isHome = location.pathname === '/' || location.pathname === '/notes-clients';
 
   const handleImport = () => {
     const existing = getNotes();
@@ -127,9 +129,20 @@ function Navbar({ onLogout, onImportHistorique, onManualExport }) {
           </div>
         </div>
       )}
-      <span className="navbar-title" onClick={handleTitleClick}>
-        Note Client
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {!isHome && (
+          <button
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'none', border: 'none', color: '#fff',
+              fontSize: 20, cursor: 'pointer', padding: '0 4px', lineHeight: 1,
+            }}
+          >←</button>
+        )}
+        <span className="navbar-title" onClick={handleTitleClick}>
+          Note Client
+        </span>
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {user?.picture && (
           <img src={user.picture} alt="profil" style={{ width: 28, height: 28, borderRadius: '50%' }} />
