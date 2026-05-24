@@ -164,6 +164,7 @@ export function deleteFiche(id) {
   if (fiche?.type === 'bop') {
     setBopGlobal(fiche.personne_key, getBopGlobal(fiche.personne_key) - fiche.montant);
   }
+  if (driveSyncCallback) driveSyncCallback();
 }
 
 export function deletePersonneData(key) {
@@ -360,6 +361,8 @@ export function addNote({ personne, montant, destinataire_key, destinataire_nom,
 export function deleteNote(id) {
   const notes = getNotes().filter((n) => n.id !== id);
   saveNotes(notes);
+  // Sync immédiat pour éviter que la note revienne si on rafraîchit dans les 2 secondes
+  if (driveSyncCallback) driveSyncCallback();
 }
 
 export function rembourserNote(id, date) {
