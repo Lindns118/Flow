@@ -81,9 +81,12 @@ export default function NotesClients() {
     setEditData({ personne: n.personne, montant: String(n.montant), date: n.date });
   };
 
+  const [editError, setEditError] = useState('');
+
   const handleSaveEdit = () => {
     const montant = parseFloat(editData.montant);
-    if (isNaN(montant)) return;
+    if (isNaN(montant)) { setEditError('Montant invalide'); return; }
+    setEditError('');
     const allNotes = getNotes();
     const note = allNotes.find((n) => n.id === editId);
     if (note) {
@@ -285,13 +288,15 @@ export default function NotesClients() {
                   <input className="input-field" value={editData.personne}
                     onChange={(e) => setEditData({ ...editData, personne: e.target.value })} placeholder="Personne" />
                   <input className="input-field" type="number" value={editData.montant}
-                    onChange={(e) => setEditData({ ...editData, montant: e.target.value })} />
+                    onChange={(e) => { setEditData({ ...editData, montant: e.target.value }); setEditError(''); }}
+                    style={{ borderColor: editError ? '#ef4444' : undefined }} />
                   <input className="input-field" type="date" value={editData.date}
                     onChange={(e) => setEditData({ ...editData, date: e.target.value })} />
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-primary" onClick={handleSaveEdit}>✓</button>
-                  <button className="btn btn-secondary" onClick={() => { setEditId(null); setEditData({}); }}>Annuler</button>
+                  <button className="btn btn-secondary" onClick={() => { setEditId(null); setEditData({}); setEditError(''); }}>Annuler</button>
+                  {editError && <span style={{ color: '#ef4444', fontSize: 12 }}>{editError}</span>}
                 </div>
               </div>
             ) : (
