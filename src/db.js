@@ -329,6 +329,17 @@ export function deleteNote(id) {
   saveNotes(notes);
 }
 
+export function rembourserNote(id, date) {
+  const notes = getNotes();
+  const note = notes.find((n) => n.id === id);
+  if (note) {
+    note.annulee = true;
+    note.rembourse = true;
+    if (date) note.rembourseDate = date;
+    saveNotes(notes);
+  }
+}
+
 export function toggleNoteHidden(id) {
   const hidden = getHiddenNotes();
   if (hidden.includes(id)) {

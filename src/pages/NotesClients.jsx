@@ -370,6 +370,7 @@ export default function NotesClients() {
                   <div key={n.id} className="nota-row" style={{ opacity: 0.5 }}>
                     <span style={{ flex: 1, fontSize: 13 }}>
                       {n.personne} → {n.destinataire_nom} ({fmtDate(n.date)})
+                      {n.rembourse && <span style={{ marginLeft: 6, fontSize: 11, color: '#dc2626', fontWeight: 600 }}>REMBOURSÉE{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}</span>}
                     </span>
                     <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>
                       {fmt(n.montant)} €

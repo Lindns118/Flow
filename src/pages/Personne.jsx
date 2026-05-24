@@ -426,7 +426,11 @@ export default function Personne() {
           <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee ? 0.5 : 1 }}>
             <span style={{ flex: 1, fontSize: 13 }}>
               {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-              {n.annulee && <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>}
+              {n.annulee && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>
+                  {n.rembourse ? `remboursée${n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}` : 'annulée'}
+                </span>
+              )}
             </span>
             <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
             <button className="delete-btn" onClick={() => handleHideNote(n.id)}>✕</button>

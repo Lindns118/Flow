@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { addFiche, addPersonne, addNote, getPersonnes, addFichePierre, slugify, addPret } from '../db';
+import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -26,9 +26,14 @@ export default function Calculator() {
   const [rowMsgs, setRowMsgs] = useState({});
   const [pretForm, setPretForm] = useState({ type: 'emprunt', produit: '', nombre: '1', lieu: '', date: today() });
   const [sessionPrets, setSessionPrets] = useState([]);
+  const [allNotes, setAllNotes] = useState([]);
+  const [rembLines, setRembLines] = useState([
+    { search: '', showDropdown: false, selectedNote: null, date: today() },
+  ]);
 
   useEffect(() => {
     setPersonnesList(getPersonnes());
+    setAllNotes(getNotes());
   }, []);
 
   const results = baseValues.map((v, i) => (parseFloat(v) || 0) * MULTIPLIERS[i]);
@@ -91,6 +96,46 @@ export default function Calculator() {
 
   const addNoteLine = () => {
     setNoteLines([...noteLines, { personne: '', montant: '', destinataire: '', date: today() }]);
+  };
+
+  const getActiveNotesSuggestions = (search) => {
+    const activeNotes = allNotes.filter((n) => !n.annulee);
+    if (!search.trim()) return activeNotes.slice(-6).reverse();
+    const q = search.toLowerCase();
+    return activeNotes.filter(
+      (n) => n.personne?.toLowerCase().includes(q) || n.destinataire_nom?.toLowerCase().includes(q)
+    );
+  };
+
+  const handleRembSearch = (i, value) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], search: value, showDropdown: true, selectedNote: null }; return u; });
+  };
+  const handleRembFocus = (i) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], showDropdown: true }; return u; });
+  };
+  const closeRembDropdown = (i) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], showDropdown: false }; return u; });
+  };
+  const handleRembSelect = (i, note) => {
+    setRembLines((prev) => {
+      const u = [...prev];
+      u[i] = { ...u[i], search: `${note.personne} → ${note.destinataire_nom} (${fmt(note.montant)} €)`, showDropdown: false, selectedNote: note };
+      return u;
+    });
+  };
+  const updateRembLine = (i, field, val) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], [field]: val }; return u; });
+  };
+  const addRembLine = () => {
+    setRembLines((prev) => [...prev, { search: '', showDropdown: false, selectedNote: null, date: today() }]);
+  };
+  const handleSaveRemb = (i) => {
+    const line = rembLines[i];
+    if (!line.selectedNote) return;
+    rembourserNote(line.selectedNote.id, line.date);
+    setAllNotes(getNotes());
+    setRembLines((prev) => { const u = [...prev]; u[i] = { search: '', showDropdown: false, selectedNote: null, date: today() }; return u; });
+    flashMsg('✓ Note remboursée');
   };
 
   const addPersonRow = () => {
@@ -353,6 +398,62 @@ export default function Calculator() {
               ))}
             </div>
           )}
+
+          <div className="section-divider" />
+
+          {/* Remboursement note */}
+          <div className="card-title" style={{ marginBottom: 8, color: '#dc2626', fontSize: 12 }}>REMBOURSEMENT NOTE</div>
+          {rembLines.map((line, i) => (
+            <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < rembLines.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 36px', gap: 8, alignItems: 'end' }}>
+                <div style={{ position: 'relative' }}>
+                  <div className="label-sm">Note à rembourser</div>
+                  <input
+                    className="input-field"
+                    placeholder="Chercher par nom..."
+                    value={line.search}
+                    onChange={(e) => handleRembSearch(i, e.target.value)}
+                    onFocus={() => handleRembFocus(i)}
+                    onBlur={() => setTimeout(() => closeRembDropdown(i), 150)}
+                    autoComplete="off"
+                  />
+                  {line.showDropdown && getActiveNotesSuggestions(line.search).length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
+                      {getActiveNotesSuggestions(line.search).slice(0, 8).map((note) => (
+                        <div key={note.id} onMouseDown={() => handleRembSelect(i, note)}
+                          style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>
+                            <strong>{note.personne}</strong>
+                            <span style={{ color: '#6b7280', margin: '0 4px' }}>→</span>
+                            {note.destinataire_nom}
+                            <span style={{ color: '#9ca3af', fontSize: 11, marginLeft: 6 }}>
+                              {note.date ? note.date.substring(8, 10) + '/' + note.date.substring(5, 7) : ''}
+                            </span>
+                          </span>
+                          <span style={{ fontWeight: 700, color: note.montant >= 0 ? '#16a34a' : '#dc2626', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                            {fmt(note.montant)} €
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="label-sm">Date</div>
+                  <input className="input-field" type="date" value={line.date} onChange={(e) => updateRembLine(i, 'date', e.target.value)} />
+                </div>
+                <button className="btn btn-primary" style={{ padding: '8px 6px', background: line.selectedNote ? '#dc2626' : undefined, opacity: line.selectedNote ? 1 : 0.5 }}
+                  onClick={() => handleSaveRemb(i)} title="Confirmer remboursement">💾</button>
+              </div>
+              {line.selectedNote && (
+                <div style={{ marginTop: 5, fontSize: 11, padding: '4px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{line.selectedNote.personne} → {line.selectedNote.destinataire_nom}</span>
+                  <strong>{fmt(line.selectedNote.montant)} € → sera annulée</strong>
+                </div>
+              )}
+            </div>
+          ))}
+          <button className="btn btn-secondary" onClick={addRembLine} style={{ marginBottom: 14, fontSize: 12 }}>+ Remboursement</button>
 
           <div className="section-divider" />
 
