@@ -176,33 +176,33 @@ export default function Personne() {
       rightY += rowH;
     });
     // Notes total
-    drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotes) + ' €'], true);
+    drawRow(rightX, rightCols, rightY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
     rightY += rowH;
 
-    y = Math.max(leftY, rightY) + 8;
-
-    // Notes remboursées section
-    const rembCols = [{ header: 'Client', w: 44 }, { header: 'Date remb.', w: 28 }, { header: 'Montant', w: 26 }];
+    // Notes remboursées — dans la même colonne que notes reçues
     if (notesCase1.length > 0 || rembFiches.length > 0) {
-      doc.setFontSize(8.5);
+      // Ligne séparatrice + label
+      doc.setFontSize(7.5);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(37, 99, 235);
-      doc.text('Notes remboursées', margin, y - 1);
-      doc.setFont(undefined, 'normal');
+      doc.text('Notes remboursées', rightX + 1, rightY + rowH - 2);
       doc.setTextColor(0, 0, 0);
-      drawRow(margin, rembCols, y, rembCols.map((c) => c.header), true);
-      y += rowH;
+      doc.setFont(undefined, 'normal');
+      doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
+      rightY += rowH;
       notesCase1.forEach((n) => {
-        drawRow(margin, rembCols, y, [n.personne || '', fmtDate(n.rembourseDate), fmt(n.montant) + ' € (soldée)']);
-        y += rowH;
+        drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.rembourseDate), fmt(n.montant) + ' (soldée)']);
+        rightY += rowH;
       });
       rembFiches.forEach((f) => {
-        drawRow(margin, rembCols, y, [f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
-        y += rowH;
+        drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        rightY += rowH;
       });
-      drawRow(margin, rembCols, y, ['Total remboursements', '', fmt(totalRemb) + ' €'], true);
-      y += rowH + 8;
+      drawRow(rightX, rightCols, rightY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
+      rightY += rowH;
     }
+
+    y = Math.max(leftY, rightY) + 8;
 
     // BOP section
     const sectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
