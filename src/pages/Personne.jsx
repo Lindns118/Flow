@@ -49,13 +49,17 @@ export default function Personne() {
   const bkFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bk');
   // Cas 2 : fiches crédit générées par un remboursement d'une note d'une session passée
   const rembFiches = fiches.filter((f) => f.personne_key === key && f.type === 'remboursement_note');
+  // IDs des notes ayant une fiche remboursement — utilisés pour les exclure des notes actives
+  // (robuste même si la note a rembourse=false suite à un bug de sync Drive)
+  const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const notesRecues = notes.filter((n) => n.destinataire_key === key && !hidden.includes(n.id));
   // Cas 1 : notes actives remboursées pendant la session (annulee+rembourse, visibles sur fiche)
   const notesCase1 = notesRecues.filter((n) => n.rembourse && !n.etaitCacheeAvantRembourse);
   const notesRecuesAll = notes.filter((n) => n.destinataire_key === key);
 
   const totalSalaires = salaires.reduce((a, b) => a + b.montant, 0);
-  const totalNotes = notesRecues.filter((n) => !n.annulee).reduce((a, b) => a + b.montant, 0);
+  // Exclude notes that have a rembFiche (Cas 2) — their credit is already counted in totalRemb
+  const totalNotes = notesRecues.filter((n) => !n.annulee && !rembNoteIds.has(n.id)).reduce((a, b) => a + b.montant, 0);
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
@@ -177,7 +181,7 @@ export default function Personne() {
     leftY += rowH;
 
     // Notes clients rows — actives normales + Case 1 barrées
-    const activeNotes = notesRecues.filter((n) => !n.annulee && !n.rembourse);
+    const activeNotes = notesRecues.filter((n) => !n.annulee && !n.rembourse && !rembNoteIds.has(n.id));
     activeNotes.forEach((n) => {
       drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
       rightY += rowH;
@@ -456,10 +460,10 @@ export default function Personne() {
             {showAnnulees ? 'Masquer annulées' : 'Voir annulées'}
           </button>
         </div>
-        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse).length === 0 && (
+        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse && !rembNoteIds.has(n.id)).length === 0 && (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>
         )}
-        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse).map((n) => (
+        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse && !rembNoteIds.has(n.id)).map((n) => (
           <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee ? 0.5 : 1 }}>
             <span style={{ flex: 1, fontSize: 13 }}>
               {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})

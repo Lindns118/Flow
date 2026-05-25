@@ -399,8 +399,9 @@ export function rembourserNote(id, date) {
   }
 
   saveNotes(notes);
-  // Cas 1 : déjà visible ; Cas 2 : reste cachée. Rien à changer dans hiddenNotes.
-  scheduleDriveSync();
+  // Sync immédiat pour éviter une désynchronisation si la page est rafraîchie dans les 2s
+  if (driveSyncCallback) driveSyncCallback();
+  else scheduleDriveSync();
 }
 
 export function annulerRemboursement(id) {
