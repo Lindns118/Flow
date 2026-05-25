@@ -159,6 +159,73 @@ export default function Pierre() {
   const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
   const totalGeneral = totalFiches + totalNotes + totalRemb - totalBk + dette;
 
+  const handlePrint = () => {
+    const row = (cells, cls = '') => `<tr class="${cls}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+    const rowH = (cells) => `<tr>${cells.map((c) => `<th>${c}</th>`).join('')}</tr>`;
+
+    const fichesRows = [...fichesActives].sort((a, b) => b.date.localeCompare(a.date))
+      .map((f) => row([fmtDate(f.date), f.type === 'retrait' ? 'Retrait' : 'Salaire', f.type === 'salaire' ? f.heures + 'h' : '', fmt(f.montant) + ' €'])).join('');
+    const noteRows = notesClients.map((n) => row([n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'])).join('');
+    const rembRows = rembFiches.map((f) => row([f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
+
+    const bkSection = bkFiches.length ? `
+      <h3 class="bk-titre">BK (déduit du total)</h3>
+      <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+        ${bkFiches.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('')}
+        ${row(['Total BK', fmt(totalBk) + ' €'], 'total-row')}
+      </tbody></table>` : '';
+
+    const formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${dette !== 0 ? ` + ${fmt(dette)} (report)` : ''} = ${fmt(totalGeneral)} €`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pierre</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:9pt;padding:12mm;color:#000}
+  h1{font-size:13pt;margin-bottom:6px}
+  .dette{color:#dc2626;font-weight:700;margin-bottom:8px}
+  .deux-cols{display:flex;gap:14px;margin-bottom:12px;align-items:flex-start}
+  .col{flex:1}
+  .col-titre{font-size:8pt;font-weight:700;margin-bottom:3px}
+  table{border-collapse:collapse;width:100%;margin-bottom:6px}
+  td,th{border:1px solid #555;padding:2px 5px;font-size:8pt}
+  th{background:#f0f0f0;font-weight:700;text-align:left}
+  .total-row td{font-weight:700}
+  .remb-titre td{color:#2563eb;font-weight:700;background:#eff6ff}
+  .bk-titre{color:#ea580c;font-size:9pt;font-weight:700;margin:10px 0 3px}
+  .grand-total{font-size:13pt;font-weight:700;margin-top:12px}
+  .formule{font-size:7.5pt;color:#555;margin-top:3px}
+  @media print{@page{size:A4 portrait;margin:10mm}body{padding:0}}
+</style></head><body>
+<h1>Pierre</h1>
+${dette < 0 ? `<p class="dette">Report période précédente : ${fmt(dette)} €</p>` : ''}
+<div class="deux-cols">
+  <div class="col">
+    <div class="col-titre">Fiches</div>
+    <table><thead>${rowH(['Date', 'Type', 'H', 'Montant'])}</thead><tbody>
+      ${fichesRows}
+      ${row(['Total', '', '', fmt(totalFiches) + ' €'], 'total-row')}
+    </tbody></table>
+  </div>
+  <div class="col">
+    <div class="col-titre">Notes clients reçues</div>
+    <table><thead>${rowH(['Client', 'Date', 'Montant'])}</thead><tbody>
+      ${noteRows}
+      ${notesClients.length ? row(['Total notes', '', fmt(totalNotes) + ' €'], 'total-row') : ''}
+      ${rembFiches.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
+    </tbody></table>
+  </div>
+</div>
+${bkSection}
+<p class="grand-total">Total Général : ${fmt(totalGeneral)} €</p>
+<p class="formule">${formula}</p>
+<script>window.onload=()=>window.print();</script>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  };
+
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
@@ -349,6 +416,7 @@ export default function Pierre() {
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Pierre</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-danger" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
+          <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={handlePrint}>Imprimer</button>
           <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={exportPDF}>Export PDF</button>
         </div>
       </div>
