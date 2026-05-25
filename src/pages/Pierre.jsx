@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
-  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette
+  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette, annulerRemboursement,
 } from '../db';
 import jsPDF from 'jspdf';
 
@@ -38,8 +38,9 @@ export default function Pierre() {
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
     setFiches(all);
+    const rembIds = new Set(all.filter((f) => f.type === 'remboursement_note').map((f) => f.noteId).filter(Boolean));
     const hidden = getHiddenNotes();
-    setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id)));
+    setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id) && !rembIds.has(n.id)));
     setPersonnesList(getPersonnes());
     setDette(getDette('pierre'));
     // Auto-select current month if nothing selected
@@ -62,7 +63,9 @@ export default function Pierre() {
     flash('✓ Pierre réinitialisé');
   };
 
-  const fichesActives = fiches.filter((f) => f.type !== 'bk');
+  const fichesActives = fiches.filter((f) => f.type !== 'bk' && f.type !== 'remboursement_note');
+  const rembFiches = fiches.filter((f) => f.type === 'remboursement_note');
+  const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const bkFiches = fiches.filter((f) => f.type === 'bk');
 
   // Group by month (exclude bk entries — they're shown in their own section)
@@ -153,7 +156,8 @@ export default function Pierre() {
   const totalFiches = fichesActives.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const totalNotes = notesClients.reduce((a, b) => a + b.montant, 0);
-  const totalGeneral = totalFiches + totalNotes - totalBk + dette;
+  const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
+  const totalGeneral = totalFiches + totalNotes + totalRemb - totalBk + dette;
 
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
@@ -242,9 +246,26 @@ export default function Pierre() {
       drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
       rightY += rowH;
     });
-    // Notes total
     if (notesClients.length > 0) {
-      drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotes) + ' €'], true);
+      drawRow(rightX, rightCols, rightY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
+      rightY += rowH;
+    }
+
+    // Notes remboursées
+    if (rembFiches.length > 0) {
+      doc.setFontSize(7.5);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(37, 99, 235);
+      doc.text('Notes remboursées', rightX + 1, rightY + rowH - 2);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
+      rightY += rowH;
+      rembFiches.forEach((f) => {
+        drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        rightY += rowH;
+      });
+      drawRow(rightX, rightCols, rightY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
       rightY += rowH;
     }
 
@@ -276,7 +297,7 @@ export default function Pierre() {
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) − ${fmt(totalBk)} (BK)`;
+    let formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)`;
     if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
@@ -511,6 +532,27 @@ export default function Pierre() {
               </div>
             ))}
           </div>
+
+          {rembFiches.length > 0 && (
+            <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
+              <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées</div>
+              {rembFiches.map((f) => (
+                <div key={f.id} className="row-hover nota-row">
+                  <span style={{ flex: 1, fontSize: 13 }}>
+                    {f.notePersonne} ({f.noteDate ? f.noteDate.substring(8, 10) + '/' + f.noteDate.substring(5, 7) : ''})
+                    <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                      remboursé {f.date ? f.date.split('-').reverse().join('/') : ''}
+                    </span>
+                  </span>
+                  <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(Math.abs(f.montant))} €</span>
+                  <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => { annulerRemboursement(f.noteId); load(); }}>↩</button>
+                </div>
+              ))}
+              <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
+                Total remboursements : {fmt(totalRemb)} €
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -546,7 +588,7 @@ export default function Pierre() {
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalFiches)} (fiches) + {fmt(totalNotes)} (notes) − {fmt(totalBk)} (BK)
+          {fmt(totalFiches)} (fiches) + {fmt(totalNotes)} (notes) + {fmt(totalRemb)} (remb.) − {fmt(totalBk)} (BK)
           {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>
