@@ -166,7 +166,7 @@ export default function Pierre() {
     const fichesRows = [...fichesActives].sort((a, b) => b.date.localeCompare(a.date))
       .map((f) => row([fmtDate(f.date), f.type === 'retrait' ? 'Retrait' : 'Salaire', f.type === 'salaire' ? f.heures + 'h' : '', fmt(f.montant) + ' €'])).join('');
     const noteRows = notesClients.map((n) => row([n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'])).join('');
-    const rembRows = rembFiches.map((f) => row([f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
+    const rembRows = rembFiches.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
 
     const bkSection = bkFiches.length ? `
       <h3 class="bk-titre">BK (déduit du total)</h3>
@@ -329,7 +329,7 @@ ${bkSection}
       doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
       rightY += rowH;
       rembFiches.forEach((f) => {
-        drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
         rightY += rowH;
       });
       drawRow(rightX, rightCols, rightY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
@@ -607,9 +607,9 @@ ${bkSection}
               {rembFiches.map((f) => (
                 <div key={f.id} className="row-hover nota-row">
                   <span style={{ flex: 1, fontSize: 13 }}>
-                    {f.notePersonne} ({f.noteDate ? f.noteDate.substring(8, 10) + '/' + f.noteDate.substring(5, 7) : ''})
+                    {f.notePersonne}
                     <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
-                      remboursé {f.date ? f.date.split('-').reverse().join('/') : ''}
+                      {f.noteDate ? f.noteDate.split('-').reverse().join('/') : ''} — remb. {f.date ? f.date.split('-').reverse().join('/') : ''}
                     </span>
                   </span>
                   <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(Math.abs(f.montant))} €</span>
