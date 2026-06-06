@@ -91,6 +91,7 @@ export default function Calculator() {
       date: line.date || today(),
     });
     setSessionNotes((prev) => [note, ...prev]);
+    setAllNotes(getNotes());
     flashMsg('✓ Note enregistrée');
   };
 
