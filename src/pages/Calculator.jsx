@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret } from '../db';
+import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret, deleteFiche, deleteFichePierre, deleteNote } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,6 +27,8 @@ export default function Calculator() {
   const [pretForm, setPretForm] = useState({ type: 'emprunt', produit: '', nombre: '1', lieu: '', date: today() });
   const [sessionPrets, setSessionPrets] = useState([]);
   const [allNotes, setAllNotes] = useState([]);
+  const [lastSavedRow, setLastSavedRow] = useState({});
+  const [lastSavedNote, setLastSavedNote] = useState({});
   const [rembLines, setRembLines] = useState([
     { search: '', showDropdown: false, selectedNote: null, date: today() },
   ]);
@@ -64,16 +66,25 @@ export default function Calculator() {
     const p = personRows[i];
     const nom = p.isNew ? p.nom : p.nom;
     if (!nom || !p.date) return;
-    // Pierre a son propre système de fiches — ne pas l'ajouter aux serveurs normaux
     if (p.key === 'pierre' || slugify(nom) === 'pierre') {
-      addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
+      const id = addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
+      setLastSavedRow((prev) => ({ ...prev, [i]: { id, type: 'pierre', label: `Pierre — ${parseFloat(p.valeur) || 0}h — ${p.date.split('-').reverse().join('/')}` } }));
       flashRowMsg(i, '✓ Fiche Pierre sauvegardée');
       return;
     }
     const personne = addPersonne(nom);
-    addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
+    const id = addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
+    setLastSavedRow((prev) => ({ ...prev, [i]: { id, type: 'fiche', label: `${personne.nom} — ${fmt(personneResults[i])} € — ${p.date.split('-').reverse().join('/')}` } }));
     setPersonnesList(getPersonnes());
     flashRowMsg(i, `✓ Sauvegardé: ${personne.nom}`);
+  };
+
+  const handleUndoRow = (i) => {
+    const saved = lastSavedRow[i];
+    if (!saved) return;
+    if (saved.type === 'pierre') deleteFichePierre(saved.id);
+    else deleteFiche(saved.id);
+    setLastSavedRow((prev) => { const n = { ...prev }; delete n[i]; return n; });
   };
 
   const handleSaveNote = (i) => {
@@ -92,7 +103,17 @@ export default function Calculator() {
     });
     setSessionNotes((prev) => [note, ...prev]);
     setAllNotes(getNotes());
+    setLastSavedNote((prev) => ({ ...prev, [i]: { id: note.id, label: `${note.personne} → ${dest.nom} — ${fmt(montant)} €` } }));
     flashMsg('✓ Note enregistrée');
+  };
+
+  const handleUndoNote = (i) => {
+    const saved = lastSavedNote[i];
+    if (!saved) return;
+    deleteNote(saved.id);
+    setAllNotes(getNotes());
+    setSessionNotes((prev) => prev.filter((n) => n.id !== saved.id));
+    setLastSavedNote((prev) => { const n = { ...prev }; delete n[i]; return n; });
   };
 
   const addNoteLine = () => {
@@ -326,7 +347,8 @@ export default function Calculator() {
                 <div>
                   <div className="label-sm">Valeur</div>
                   <input className="input-field" type="number" placeholder="0" value={p.valeur}
-                    onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)} />
+                    onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveFiche(i)} />
                 </div>
                 <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveFiche(i)} title="Sauvegarder">💾</button>
                 <button className="btn btn-danger" style={{ padding: '8px 4px', fontSize: 12 }} onClick={() => removePersonRow(i)} title="Supprimer">✕</button>
@@ -338,6 +360,12 @@ export default function Calculator() {
               {rowMsgs[i] && (
                 <div style={{ marginTop: 4, textAlign: 'right', fontSize: 12, color: '#065f46', background: '#d1fae5', borderRadius: 6, padding: '3px 10px' }}>
                   {rowMsgs[i]}
+                </div>
+              )}
+              {lastSavedRow[i] && (
+                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 10px' }}>
+                  <span style={{ flex: 1, color: '#15803d' }}>✓ {lastSavedRow[i].label}</span>
+                  <button onClick={() => handleUndoRow(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
                 </div>
               )}
             </div>
@@ -362,7 +390,9 @@ export default function Calculator() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>−</span>
                     <input className="input-field" type="number" placeholder="0" value={line.montant}
-                      onChange={(e) => updateNote(i, 'montant', e.target.value)} style={{ flex: 1 }} />
+                      onChange={(e) => updateNote(i, 'montant', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveNote(i)}
+                      style={{ flex: 1 }} />
                   </div>
                 </div>
               </div>
@@ -383,6 +413,12 @@ export default function Calculator() {
                 </div>
                 <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveNote(i)} title="Sauvegarder">💾</button>
               </div>
+              {lastSavedNote[i] && (
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 10px' }}>
+                  <span style={{ flex: 1, color: '#15803d' }}>✓ {lastSavedNote[i].label}</span>
+                  <button onClick={() => handleUndoNote(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
+                </div>
+              )}
             </div>
           ))}
           <button className="btn btn-secondary" onClick={addNoteLine} style={{ marginBottom: 14 }}>+ Ajouter une ligne</button>
