@@ -165,10 +165,28 @@ export default function Pierre() {
     const row = (cells, cls = '') => `<tr class="${cls}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
     const rowH = (cells) => `<tr>${cells.map((c) => `<th>${c}</th>`).join('')}</tr>`;
 
-    const fichesRows = [...fichesActives].sort((a, b) => b.date.localeCompare(a.date))
+    // Filter everything by selected month
+    const fichesDuMois = [...fichesActives]
+      .filter((f) => (f.mois || f.date.substring(0, 7)) === selectedMois)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const totalFichesMois = fichesDuMois.reduce((a, b) => a + b.montant, 0);
+
+    const fichesRows = fichesDuMois
       .map((f) => row([fmtDate(f.date), f.type === 'retrait' ? 'Retrait' : 'Salaire', f.type === 'salaire' ? f.heures + 'h' : '', fmt(f.montant) + ' €'])).join('');
-    const noteRows = notesClients.map((n) => row([n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'])).join('');
-    const rembRows = rembFiches.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
+
+    // All Pierre notes for this month (including reimbursed → strikethrough)
+    const rembNoteIdsThisMois = new Set(rembFichesDuMois.map((f) => f.noteId).filter(Boolean));
+    const allNotesMois = getNotes()
+      .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && (n.date || '').substring(0, 7) === selectedMois)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const noteRows = allNotesMois.map((n) => {
+      const barré = rembNoteIdsThisMois.has(n.id);
+      const style = barré ? ' style="text-decoration:line-through;opacity:0.55"' : '';
+      return `<tr${style}><td>${n.personne || ''}</td><td>${fmtDate(n.date)}</td><td>${fmt(n.montant)} €</td></tr>`;
+    }).join('');
+    const totalNotesMois = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
+
+    const rembRows = rembFichesDuMois.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
 
     const bkSection = bkFiches.length ? `
       <h3 class="bk-titre">BK (déduit du total)</h3>
@@ -177,9 +195,9 @@ export default function Pierre() {
         ${row(['Total BK', fmt(totalBk) + ' €'], 'total-row')}
       </tbody></table>` : '';
 
-    const formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${dette !== 0 ? ` + ${fmt(dette)} (report)` : ''} = ${fmt(totalGeneral)} €`;
+    const formula = `${fmt(totalFichesMois)} (fiches) + ${fmt(totalNotesMois)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${dette !== 0 ? ` + ${fmt(dette)} (report)` : ''} = ${fmt(totalGeneral)} €`;
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pierre</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pierre — ${fmtMois(selectedMois)}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,sans-serif;font-size:9pt;padding:12mm;color:#000}
@@ -198,22 +216,22 @@ export default function Pierre() {
   .formule{font-size:7.5pt;color:#555;margin-top:3px}
   @media print{@page{size:A4 portrait;margin:10mm}body{padding:0}}
 </style></head><body>
-<h1>Pierre</h1>
+<h1>Pierre — ${fmtMois(selectedMois)}</h1>
 ${dette < 0 ? `<p class="dette">Report période précédente : ${fmt(dette)} €</p>` : ''}
 <div class="deux-cols">
   <div class="col">
     <div class="col-titre">Fiches</div>
     <table><thead>${rowH(['Date', 'Type', 'H', 'Montant'])}</thead><tbody>
       ${fichesRows}
-      ${row(['Total', '', '', fmt(totalFiches) + ' €'], 'total-row')}
+      ${row(['Total', '', '', fmt(totalFichesMois) + ' €'], 'total-row')}
     </tbody></table>
   </div>
   <div class="col">
     <div class="col-titre">Notes clients reçues</div>
     <table><thead>${rowH(['Client', 'Date', 'Montant'])}</thead><tbody>
       ${noteRows}
-      ${notesClients.length ? row(['Total notes', '', fmt(totalNotes) + ' €'], 'total-row') : ''}
-      ${rembFiches.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
+      ${allNotesMois.length ? row(['Total notes', '', fmt(totalNotesMois) + ' €'], 'total-row') : ''}
+      ${rembFichesDuMois.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
     </tbody></table>
   </div>
 </div>
