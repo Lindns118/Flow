@@ -154,7 +154,8 @@ export default function Pierre() {
   };
 
   const totalFiches = selectedMois ? (moisMap[selectedMois]?.total || 0) : fichesActives.reduce((a, b) => a + b.montant, 0);
-  const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
+  const bkFichesDuMois = bkFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
+  const totalBk = bkFichesDuMois.reduce((a, b) => a + b.montant, 0);
   const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
   const totalNotes = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
   const rembFichesDuMois = rembFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
@@ -188,10 +189,10 @@ export default function Pierre() {
 
     const rembRows = rembFichesDuMois.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
 
-    const bkSection = bkFiches.length ? `
+    const bkSection = bkFichesDuMois.length ? `
       <h3 class="bk-titre">BK (déduit du total)</h3>
       <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
-        ${bkFiches.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('')}
+        ${bkFichesDuMois.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('')}
         ${row(['Total BK', fmt(totalBk) + ' €'], 'total-row')}
       </tbody></table>` : '';
 
@@ -373,7 +374,7 @@ ${bkSection}
 
     // BK section
     const bkSectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
-    if (bkFiches.length > 0) {
+    if (bkFichesDuMois.length > 0) {
       doc.setFontSize(8.5);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(234, 88, 12);
@@ -382,7 +383,7 @@ ${bkSection}
       doc.setTextColor(0, 0, 0);
       drawRow(margin, bkSectionCols, y, bkSectionCols.map((c) => c.header), true);
       y += rowH;
-      bkFiches.forEach((f) => {
+      bkFichesDuMois.forEach((f) => {
         drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']);
         y += rowH;
       });
@@ -663,8 +664,8 @@ ${bkSection}
       {/* BK */}
       <div className="card" style={{ borderLeft: '4px solid #ea580c' }}>
         <div className="card-title" style={{ color: '#ea580c' }}>Pour BK</div>
-        {bkFiches.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée</div>}
-        {bkFiches.map((f) => (
+        {bkFichesDuMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée ce mois</div>}
+        {bkFichesDuMois.map((f) => (
           <div key={f.id} className="row-hover nota-row">
             <span style={{ flex: 1, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
             <span style={{ fontWeight: 600, color: '#ea580c' }}>{fmt(f.montant)} €</span>
