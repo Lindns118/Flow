@@ -253,7 +253,7 @@ ${bkSection}
 
     doc.setFontSize(14);
     doc.setFont(undefined, 'bold');
-    doc.text('Pierre', margin, 12);
+    doc.text(`Pierre — ${fmtMois(selectedMois)}`, margin, 12);
     doc.setFont(undefined, 'normal');
 
     let y = 20;
@@ -283,10 +283,11 @@ ${bkSection}
     const rightX = leftX + leftCols.reduce((a, c) => a + c.w, 0) + 8; // 12+88+8=108
     const rightCols = [{ header: 'Client', w: 40 }, { header: 'Date', w: 22 }, { header: 'Montant', w: 26 }]; // 88mm
 
-    const drawRow = (startX, cols, cy, cells, bold = false) => {
+    const drawRow = (startX, cols, cy, cells, bold = false, strikethrough = false) => {
       let x = startX;
       doc.setFont(undefined, bold ? 'bold' : 'normal');
       doc.setFontSize(bold ? 8.5 : 8);
+      if (strikethrough) doc.setTextColor(150, 150, 150);
       cols.forEach((col, i) => {
         doc.rect(x, cy, col.w, rowH);
         const val = cells[i];
@@ -295,9 +296,11 @@ ${bkSection}
           const maxW = col.w - 2;
           while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
           doc.text(txt, x + 1.2, cy + rowH - 1.8);
+          if (strikethrough) doc.line(x + 1.2, cy + rowH / 2, x + col.w - 1.2, cy + rowH / 2);
         }
         x += col.w;
       });
+      if (strikethrough) doc.setTextColor(0, 0, 0);
     };
 
     // Section labels
@@ -314,8 +317,13 @@ ${bkSection}
     let leftY = y + rowH;
     let rightY = y + rowH;
 
-    // Fiches rows (salaire/retrait only, sorted by date desc)
-    [...fichesActives].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
+    // Fiches rows filtered by selected month
+    const fichesDuMoisPDF = [...fichesActives]
+      .filter((f) => (f.mois || f.date.substring(0, 7)) === selectedMois)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const totalFichesMoisPDF = fichesDuMoisPDF.reduce((a, b) => a + b.montant, 0);
+
+    fichesDuMoisPDF.forEach((f) => {
       drawRow(leftX, leftCols, leftY, [
         fmtDate(f.date),
         f.type === 'retrait' ? 'Retrait' : 'Salaire',
@@ -324,22 +332,27 @@ ${bkSection}
       ]);
       leftY += rowH;
     });
-    // Fiches total
-    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFiches) + ' €'], true);
+    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFichesMoisPDF) + ' €'], true);
     leftY += rowH;
 
-    // Notes clients rows
-    notesClients.forEach((n) => {
-      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
+    // Notes clients: active + reimbursed (strikethrough) for selected month
+    const rembNoteIdsThisMois = new Set(rembFichesDuMois.map((f) => f.noteId).filter(Boolean));
+    const allNotesMoisPDF = getNotes()
+      .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && (n.date || '').substring(0, 7) === selectedMois)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    allNotesMoisPDF.forEach((n) => {
+      const isRemb = rembNoteIdsThisMois.has(n.id);
+      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], false, isRemb);
       rightY += rowH;
     });
-    if (notesClients.length > 0) {
+    if (allNotesMoisPDF.length > 0) {
       drawRow(rightX, rightCols, rightY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
       rightY += rowH;
     }
 
-    // Notes remboursées
-    if (rembFiches.length > 0) {
+    // Notes remboursées (filtered by month)
+    if (rembFichesDuMois.length > 0) {
       doc.setFontSize(7.5);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(37, 99, 235);
@@ -348,7 +361,7 @@ ${bkSection}
       doc.setFont(undefined, 'normal');
       doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
       rightY += rowH;
-      rembFiches.forEach((f) => {
+      rembFichesDuMois.forEach((f) => {
         drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
         rightY += rowH;
       });
@@ -384,7 +397,7 @@ ${bkSection}
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)`;
+    let formula = `${fmt(totalFichesMoisPDF)} (fiches) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)`;
     if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
