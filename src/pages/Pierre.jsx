@@ -33,6 +33,7 @@ export default function Pierre() {
   const [confirmDeleteMois, setConfirmDeleteMois] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [bkInput, setBkInput] = useState('');
+  const [bkDate, setBkDate] = useState(today());
   const [dette, setDette] = useState(0);
 
   const load = () => {
@@ -148,7 +149,7 @@ export default function Pierre() {
 
   const handleAddBk = () => {
     if (!bkInput) return;
-    addFichePierre({ date: new Date().toISOString().slice(0, 10), montantDirect: parseFloat(bkInput), type: 'bk' });
+    addFichePierre({ date: bkDate || today(), montantDirect: parseFloat(bkInput), type: 'bk' });
     setBkInput('');
     load();
   };
@@ -673,6 +674,13 @@ ${bkSection}
           </div>
         ))}
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <input
+            className="input-field"
+            type="date"
+            value={bkDate}
+            onChange={(e) => setBkDate(e.target.value)}
+            style={{ width: 140 }}
+          />
           <input
             className="input-field"
             type="number"
