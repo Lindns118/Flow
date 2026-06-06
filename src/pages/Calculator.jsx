@@ -121,7 +121,7 @@ export default function Calculator() {
   };
 
   const getActiveNotesSuggestions = (search) => {
-    const activeNotes = allNotes.filter((n) => !n.annulee);
+    const activeNotes = allNotes.filter((n) => !n.annulee && !n.rembourse);
     if (!search.trim()) return activeNotes.slice(-6).reverse();
     const q = search.toLowerCase();
     return activeNotes.filter(
