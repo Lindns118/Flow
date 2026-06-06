@@ -157,7 +157,8 @@ export default function Pierre() {
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
   const totalNotes = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
-  const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
+  const rembFichesDuMois = rembFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
+  const totalRemb = rembFichesDuMois.reduce((a, b) => a + Math.abs(b.montant), 0);
   const totalGeneral = totalFiches + totalNotes + totalRemb - totalBk + dette;
 
   const handlePrint = () => {
@@ -605,10 +606,10 @@ ${bkSection}
             })()}
           </div>
 
-          {rembFiches.length > 0 && (
+          {rembFichesDuMois.length > 0 && (
             <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
               <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées</div>
-              {rembFiches.map((f) => (
+              {rembFichesDuMois.map((f) => (
                 <div key={f.id} className="row-hover nota-row">
                   <span style={{ flex: 1, fontSize: 13 }}>
                     {f.notePersonne}
