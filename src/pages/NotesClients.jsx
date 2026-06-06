@@ -34,6 +34,7 @@ export default function NotesClients() {
   const [hiddenIds, setHiddenIds] = useState(new Set());
   const [showHidden, setShowHidden] = useState(false);
   const [showAnnulees, setShowAnnulees] = useState({});
+  const [showRemboursees, setShowRemboursees] = useState({});
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [triPar, setTriPar] = useState('serveur');
@@ -103,6 +104,7 @@ export default function NotesClients() {
   };
 
   const toggleAnnulees = (key) => setShowAnnulees((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleRemboursees = (key) => setShowRemboursees((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Export PDF global
   const exportPDF = () => {
@@ -285,6 +287,7 @@ export default function NotesClients() {
         const annuleesNotes = group.notes.filter((n) => n.annulee);
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
+        const showRemb = showRemboursees[key];
 
         const sorted = (arr) => [...arr].sort((a, b) =>
           sortDate === 'desc'
@@ -351,18 +354,29 @@ export default function NotesClients() {
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>({hiddenNotes.length} cachée{hiddenNotes.length > 1 ? 's' : ''})</span>
                 )}
               </div>
-              {annuleesNotes.length > 0 && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => toggleAnnulees(key)}
-                >
-                  {showAnn ? 'Masquer annulées' : `Annulées (${annuleesNotes.length})`}
-                </button>
-              )}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {rembourseesNotes.length > 0 && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px', color: showRemb ? '#9333ea' : undefined }}
+                    onClick={() => toggleRemboursees(key)}
+                  >
+                    {showRemb ? 'Masquer remb.' : `Remboursées (${rembourseesNotes.length})`}
+                  </button>
+                )}
+                {annuleesNotes.length > 0 && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => toggleAnnulees(key)}
+                  >
+                    {showAnn ? 'Masquer annulées' : `Annulées (${annuleesNotes.length})`}
+                  </button>
+                )}
+              </div>
             </div>
 
-            {activeNotes.length === 0 && !showHidden && (
+            {activeNotes.length === 0 && !showHidden && rembourseesNotes.length === 0 && (
               <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note active</div>
             )}
 
@@ -375,7 +389,7 @@ export default function NotesClients() {
               </div>
             )}
 
-            {rembourseesNotes.length > 0 && (
+            {showRemb && rembourseesNotes.length > 0 && (
               <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ fontSize: 11, color: '#9333ea', marginBottom: 6, fontWeight: 600 }}>REMBOURSÉES</div>
                 {sorted(rembourseesNotes).map((n) => (
