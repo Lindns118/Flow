@@ -155,7 +155,9 @@ export default function Pierre() {
 
   const totalFiches = fichesActives.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
+  const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
   const totalNotes = notesClients.reduce((a, b) => a + b.montant, 0);
+  const totalNotesDuMois = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
   const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
   const totalGeneral = totalFiches + totalNotes + totalRemb - totalBk + dette;
 
@@ -589,16 +591,19 @@ ${bkSection}
 
           <div className="card">
             <div className="card-title">Notes clients reçues</div>
-            <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotes)} €</div>
-            {notesClients.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>}
-            {[...notesClients].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((n) => (
-              <div key={n.id} className="nota-row">
-                <span style={{ flex: 1, fontSize: 13 }}>
-                  {n.personne} → Pierre ({fmtDate(n.date)})
-                </span>
-                <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
-              </div>
-            ))}
+            <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotesDuMois)} €</div>
+            {(() => {
+              const notesDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
+              if (notesDuMois.length === 0) return <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note ce mois</div>;
+              return [...notesDuMois].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((n) => (
+                <div key={n.id} className="nota-row">
+                  <span style={{ flex: 1, fontSize: 13 }}>
+                    {n.personne} → Pierre ({fmtDate(n.date)})
+                  </span>
+                  <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
+                </div>
+              ));
+            })()}
           </div>
 
           {rembFiches.length > 0 && (
