@@ -153,7 +153,7 @@ export default function Pierre() {
     load();
   };
 
-  const totalFiches = fichesActives.reduce((a, b) => a + b.montant, 0);
+  const totalFiches = selectedMois ? (moisMap[selectedMois]?.total || 0) : fichesActives.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
   const totalNotes = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
