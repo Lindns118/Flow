@@ -591,34 +591,14 @@ ${bkSection}
             <div className="card-title">Notes clients reçues</div>
             <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotes)} €</div>
             {notesClients.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>}
-            {(() => {
-              const byMois = notesClients.reduce((acc, n) => {
-                const m = (n.date || '').substring(0, 7);
-                if (!acc[m]) acc[m] = [];
-                acc[m].push(n);
-                return acc;
-              }, {});
-              return Object.keys(byMois).sort((a, b) => b.localeCompare(a)).map((m) => {
-                const mNotes = byMois[m];
-                const mTotal = mNotes.reduce((a, b) => a + b.montant, 0);
-                return (
-                  <div key={m} style={{ marginBottom: 10 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>{fmtMois(m)}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: mTotal < 0 ? '#dc2626' : '#16a34a' }}>{fmt(mTotal)} €</span>
-                    </div>
-                    {[...mNotes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((n) => (
-                      <div key={n.id} className="nota-row">
-                        <span style={{ flex: 1, fontSize: 13 }}>
-                          {n.personne} → Pierre ({fmtDate(n.date)})
-                        </span>
-                        <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              });
-            })()}
+            {[...notesClients].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((n) => (
+              <div key={n.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>
+                  {n.personne} → Pierre ({fmtDate(n.date)})
+                </span>
+                <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
+              </div>
+            ))}
           </div>
 
           {rembFiches.length > 0 && (
