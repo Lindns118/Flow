@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getNotes, saveNotes, deleteNote, annulerRemboursement, getHiddenNotes, hideMatchingPairs } from '../db';
+import { getNotes, saveNotes, deleteNote, annulerRemboursement, getHiddenNotes, hideMatchingPairs, reconcileRemboursements } from '../db';
 import jsPDF from 'jspdf';
 
 const normName = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
@@ -42,6 +42,7 @@ export default function NotesClients() {
 
   const load = () => {
     hideMatchingPairs();
+    reconcileRemboursements();
     setNotes(getNotes());
     setHiddenIds(new Set(getHiddenNotes()));
   };
@@ -119,7 +120,7 @@ export default function NotesClients() {
     doc.setFont(undefined, 'normal');
 
     const activeNotes = filteredNotes
-      .filter((n) => !n.annulee && !pairHiddenIds.has(n.id))
+      .filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id))
       .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
 
     const drawRow = (cells, bold = false) => {
@@ -158,7 +159,7 @@ export default function NotesClients() {
     doc.text(title, margin, 12); doc.setFont(undefined, 'normal');
 
     const grp = {};
-    filteredNotes.filter((n) => !n.annulee && !pairHiddenIds.has(n.id)).forEach((n) => {
+    filteredNotes.filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id)).forEach((n) => {
       const k = groupBy === 'serveur'
         ? (n.destinataire_key || 'inconnu')
         : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
@@ -277,9 +278,10 @@ export default function NotesClients() {
       )}
 
       {sortedGroups.map(([key, group]) => {
-        const activeNotes = group.notes.filter((n) => !n.annulee && !pairHiddenIds.has(n.id));
+        const activeNotes = group.notes.filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id));
+        const rembourseesNotes = group.notes.filter((n) => !n.annulee && n.rembourse);
         // Only show pairs (notes hidden because they cancel each other), not reset-hidden notes
-        const hiddenNotes = group.notes.filter((n) => !n.annulee && pairHiddenIds.has(n.id));
+        const hiddenNotes = group.notes.filter((n) => !n.annulee && !n.rembourse && pairHiddenIds.has(n.id));
         const annuleesNotes = group.notes.filter((n) => n.annulee);
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
@@ -335,7 +337,7 @@ export default function NotesClients() {
           </div>
         );
 
-        if (activeNotes.length === 0 && (!showHidden || hiddenNotes.length === 0) && annuleesNotes.length === 0) return null;
+        if (activeNotes.length === 0 && rembourseesNotes.length === 0 && (!showHidden || hiddenNotes.length === 0) && annuleesNotes.length === 0) return null;
 
         return (
           <div key={key} className="card">
@@ -370,6 +372,33 @@ export default function NotesClients() {
               <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 600 }}>CACHÉES</div>
                 {sorted(hiddenNotes).map((n) => renderNote(n, true))}
+              </div>
+            )}
+
+            {rembourseesNotes.length > 0 && (
+              <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ fontSize: 11, color: '#9333ea', marginBottom: 6, fontWeight: 600 }}>REMBOURSÉES</div>
+                {sorted(rembourseesNotes).map((n) => (
+                  <div key={n.id} className="nota-row" style={{ opacity: 0.65 }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>
+                      {triPar === 'serveur'
+                        ? <>{n.personne} <span style={{ color: '#9ca3af' }}>→ {group.nom}</span></>
+                        : <>{group.nom} <span style={{ color: '#9ca3af' }}>→ {n.destinataire_nom}</span></>
+                      }
+                      {' '}({fmtDate(n.date)})
+                      <span style={{ marginLeft: 6, fontSize: 11, color: '#9333ea', fontWeight: 600 }}>remb.</span>
+                    </span>
+                    <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>
+                      {fmt(n.montant)} €
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
+                      title="Annuler le remboursement"
+                      onClick={(e) => { e.stopPropagation(); annulerRemboursement(n.id); load(); }}
+                    >↩</button>
+                  </div>
+                ))}
               </div>
             )}
 

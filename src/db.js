@@ -79,6 +79,26 @@ export function setAllData(data) {
     localStorage.setItem('hiddenNotes', JSON.stringify([...new Set([...getHiddenNotes(), ...data.hiddenNotes])]));
   }
   reconcilePersonnes();
+  reconcileRemboursements();
+}
+
+// Cross-reference notes with rembFiches to auto-fix rembourse=false inconsistencies (Drive sync race)
+export function reconcileRemboursements() {
+  const allFiches = [...getFiches(), ...getFichesPierre()];
+  const rembNoteIds = new Set(
+    allFiches.filter((f) => f.type === 'remboursement_note').map((f) => f.noteId).filter(Boolean)
+  );
+  if (rembNoteIds.size === 0) return;
+  const notes = getNotes();
+  let changed = false;
+  notes.forEach((n) => {
+    if (rembNoteIds.has(n.id) && !n.rembourse) {
+      n.rembourse = true;
+      n.etaitCacheeAvantRembourse = true;
+      changed = true;
+    }
+  });
+  if (changed) saveNotes(notes);
 }
 
 // Ensure every server referenced in notes has a personne entry
