@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
   getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette, annulerRemboursement,
+  getPierreMonthReports, savePierreMonthReports,
 } from '../db';
 import jsPDF from 'jspdf';
 
@@ -13,6 +14,11 @@ const fmtMois = (m) => {
   const [y, mo] = m.split('-');
   const names = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
   return `${names[parseInt(mo, 10) - 1]} ${y}`;
+};
+const nextMonth = (mois) => {
+  const [y, m] = mois.split('-').map(Number);
+  if (m === 12) return `${y + 1}-01`;
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
 };
 
 export default function Pierre() {
@@ -32,9 +38,11 @@ export default function Pierre() {
   const [msg, setMsg] = useState('');
   const [confirmDeleteMois, setConfirmDeleteMois] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmValider, setConfirmValider] = useState(false);
   const [bkInput, setBkInput] = useState('');
   const [bkDate, setBkDate] = useState(today());
   const [dette, setDette] = useState(0);
+  const [monthReports, setMonthReports] = useState({});
 
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
@@ -44,7 +52,7 @@ export default function Pierre() {
     setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id) && !rembIds.has(n.id)));
     setPersonnesList(getPersonnes());
     setDette(getDette('pierre'));
-    // Auto-select current month if nothing selected
+    setMonthReports(getPierreMonthReports());
     setSelectedMois((prev) => {
       if (prev) return prev;
       const curMois = today().substring(0, 7);
@@ -64,22 +72,47 @@ export default function Pierre() {
     flash('✓ Pierre réinitialisé');
   };
 
-  const fichesActives = fiches.filter((f) => f.type !== 'bk' && f.type !== 'remboursement_note');
+  // Exclude bk and remboursement_note from the main fiches display — only salaire + retrait
+  const fichesActives = fiches.filter((f) => f.type === 'salaire' || f.type === 'retrait');
   const rembFiches = fiches.filter((f) => f.type === 'remboursement_note');
-  const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const bkFiches = fiches.filter((f) => f.type === 'bk');
 
-  // Group by month (exclude bk entries — they're shown in their own section)
+  // Group by month — track salaires and retraits separately
   const moisMap = fichesActives.reduce((acc, f) => {
     const m = f.mois || f.date.substring(0, 7);
-    if (!acc[m]) acc[m] = { total: 0, fiches: [] };
-    acc[m].total += f.montant;
+    if (!acc[m]) acc[m] = { salaires: 0, retraits: 0, fiches: [] };
+    if (f.type === 'salaire') acc[m].salaires += f.montant;
+    if (f.type === 'retrait') acc[m].retraits += Math.abs(f.montant);
     acc[m].fiches.push(f);
     return acc;
   }, {});
   const moisList = Object.keys(moisMap).sort((a, b) => b.localeCompare(a));
 
   const fichesOfMois = selectedMois ? (moisMap[selectedMois]?.fiches || []) : [];
+  const salairesDuMois = [...fichesOfMois].filter((f) => f.type === 'salaire').sort((a, b) => b.date.localeCompare(a.date));
+  const retraitsDuMois = [...fichesOfMois].filter((f) => f.type === 'retrait').sort((a, b) => b.date.localeCompare(a.date));
+  const totalSalairesMois = salairesDuMois.reduce((a, b) => a + b.montant, 0);
+  const totalRetraitsMois = retraitsDuMois.reduce((a, b) => a + Math.abs(b.montant), 0);
+
+  const bkFichesDuMois = bkFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
+  const totalBk = bkFichesDuMois.reduce((a, b) => a + b.montant, 0);
+  const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
+  const totalNotes = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
+  const rembFichesDuMois = rembFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
+  const totalRemb = rembFichesDuMois.reduce((a, b) => a + Math.abs(b.montant), 0);
+
+  // Carry-over: use month report if available (already includes previous dette), else fall back to global dette
+  const reportDuMoisPrecedent = monthReports[selectedMois] !== undefined ? monthReports[selectedMois] : dette;
+  const totalGeneral = totalSalairesMois - totalRetraitsMois - totalNotes + totalRemb - totalBk + reportDuMoisPrecedent;
+
+  const handleValiderMois = () => {
+    const reports = getPierreMonthReports();
+    reports[nextMonth(selectedMois)] = totalGeneral;
+    savePierreMonthReports(reports);
+    setConfirmValider(false);
+    load();
+    flash(`✓ ${fmtMois(selectedMois)} validé — Report : ${fmt(totalGeneral)} €`);
+  };
 
   const handleSaveFiche = () => {
     if (!date) return;
@@ -94,10 +127,7 @@ export default function Pierre() {
     flash('✓ Fiche sauvegardée');
   };
 
-  const handleDelete = (id) => {
-    deleteFichePierre(id);
-    load();
-  };
+  const handleDelete = (id) => { deleteFichePierre(id); load(); };
 
   const handleDeleteMois = (mois) => {
     deleteFichesPierreMois(mois);
@@ -154,30 +184,15 @@ export default function Pierre() {
     load();
   };
 
-  const totalFiches = selectedMois ? (moisMap[selectedMois]?.total || 0) : fichesActives.reduce((a, b) => a + b.montant, 0);
-  const bkFichesDuMois = bkFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
-  const totalBk = bkFichesDuMois.reduce((a, b) => a + b.montant, 0);
-  const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
-  const totalNotes = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
-  const rembFichesDuMois = rembFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
-  const totalRemb = rembFichesDuMois.reduce((a, b) => a + Math.abs(b.montant), 0);
-  const totalGeneral = totalFiches + totalNotes + totalRemb - totalBk + dette;
-
   const handlePrint = () => {
     const row = (cells, cls = '') => `<tr class="${cls}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
     const rowH = (cells) => `<tr>${cells.map((c) => `<th>${c}</th>`).join('')}</tr>`;
 
-    // Filter everything by selected month
-    const fichesDuMois = [...fichesActives]
-      .filter((f) => (f.mois || f.date.substring(0, 7)) === selectedMois)
-      .sort((a, b) => b.date.localeCompare(a.date));
-    const totalFichesMois = fichesDuMois.reduce((a, b) => a + b.montant, 0);
-
-    const fichesRows = fichesDuMois
-      .map((f) => row([fmtDate(f.date), f.type === 'retrait' ? 'Retrait' : 'Salaire', f.type === 'salaire' ? f.heures + 'h' : '', fmt(f.montant) + ' €'])).join('');
-
-    // All Pierre notes for this month (including reimbursed → strikethrough)
     const rembNoteIdsThisMois = new Set(rembFichesDuMois.map((f) => f.noteId).filter(Boolean));
+
+    const salairesRows = salairesDuMois.map((f) => row([fmtDate(f.date), f.heures + 'h', fmt(f.montant) + ' €'])).join('');
+    const retraitsRows = retraitsDuMois.map((f) => row([fmtDate(f.date), fmt(Math.abs(f.montant)) + ' €'])).join('');
+
     const allNotesMois = getNotes()
       .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && (n.date || '').substring(0, 7) === selectedMois)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -186,8 +201,6 @@ export default function Pierre() {
       const style = barré ? ' style="text-decoration:line-through;opacity:0.55"' : '';
       return `<tr${style}><td>${n.personne || ''}</td><td>${fmtDate(n.date)}</td><td>${fmt(n.montant)} €</td></tr>`;
     }).join('');
-    const totalNotesMois = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
-
     const rembRows = rembFichesDuMois.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
 
     const bkSection = bkFichesDuMois.length ? `
@@ -197,7 +210,8 @@ export default function Pierre() {
         ${row(['Total BK', fmt(totalBk) + ' €'], 'total-row')}
       </tbody></table>` : '';
 
-    const formula = `${fmt(totalFichesMois)} (fiches) + ${fmt(totalNotesMois)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${dette !== 0 ? ` + ${fmt(dette)} (report)` : ''} = ${fmt(totalGeneral)} €`;
+    const reportLine = reportDuMoisPrecedent !== 0 ? `<p class="dette">Report période précédente : ${fmt(reportDuMoisPrecedent)} €</p>` : '';
+    const formula = `${fmt(totalSalairesMois)} (sal.) − ${fmt(totalRetraitsMois)} (retraits) − ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${reportDuMoisPrecedent !== 0 ? ` + ${fmt(reportDuMoisPrecedent)} (report)` : ''} = ${fmt(totalGeneral)} €`;
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pierre — ${fmtMois(selectedMois)}</title>
 <style>
@@ -205,7 +219,7 @@ export default function Pierre() {
   body{font-family:Arial,sans-serif;font-size:9pt;padding:12mm;color:#000}
   h1{font-size:13pt;margin-bottom:6px}
   .dette{color:#dc2626;font-weight:700;margin-bottom:8px}
-  .deux-cols{display:flex;gap:14px;margin-bottom:12px;align-items:flex-start}
+  .trois-cols{display:flex;gap:10px;margin-bottom:12px;align-items:flex-start}
   .col{flex:1}
   .col-titre{font-size:8pt;font-weight:700;margin-bottom:3px}
   table{border-collapse:collapse;width:100%;margin-bottom:6px}
@@ -219,21 +233,28 @@ export default function Pierre() {
   @media print{@page{size:A4 portrait;margin:10mm}body{padding:0}}
 </style></head><body>
 <h1>Pierre — ${fmtMois(selectedMois)}</h1>
-${dette < 0 ? `<p class="dette">Report période précédente : ${fmt(dette)} €</p>` : ''}
-<div class="deux-cols">
+${reportLine}
+<div class="trois-cols">
   <div class="col">
-    <div class="col-titre">Fiches</div>
-    <table><thead>${rowH(['Date', 'Type', 'H', 'Montant'])}</thead><tbody>
-      ${fichesRows}
-      ${row(['Total', '', '', fmt(totalFichesMois) + ' €'], 'total-row')}
+    <div class="col-titre">Salaires</div>
+    <table><thead>${rowH(['Date', 'H', 'Montant'])}</thead><tbody>
+      ${salairesRows}
+      ${row(['Total', '', fmt(totalSalairesMois) + ' €'], 'total-row')}
     </tbody></table>
   </div>
   <div class="col">
-    <div class="col-titre">Notes clients reçues</div>
+    <div class="col-titre" style="color:#dc2626">Retraits (−)</div>
+    <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+      ${retraitsRows || '<tr><td colspan="2" style="color:#999">Aucun</td></tr>'}
+      ${row(['Total', fmt(totalRetraitsMois) + ' €'], 'total-row')}
+    </tbody></table>
+  </div>
+  <div class="col">
+    <div class="col-titre">Notes clients reçues (−)</div>
     <table><thead>${rowH(['Client', 'Date', 'Montant'])}</thead><tbody>
-      ${noteRows}
-      ${allNotesMois.length ? row(['Total notes', '', fmt(totalNotesMois) + ' €'], 'total-row') : ''}
-      ${rembFichesDuMois.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
+      ${noteRows || '<tr><td colspan="3" style="color:#999">Aucune</td></tr>'}
+      ${allNotesMois.length ? row(['Total notes', '', fmt(totalNotes) + ' €'], 'total-row') : ''}
+      ${rembFichesDuMois.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées (+)</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
     </tbody></table>
   </div>
 </div>
@@ -252,38 +273,35 @@ ${bkSection}
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
     const rowH = 7;
+    let y = 20;
 
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
+    doc.setFontSize(14); doc.setFont(undefined, 'bold');
     doc.text(`Pierre — ${fmtMois(selectedMois)}`, margin, 12);
     doc.setFont(undefined, 'normal');
 
-    let y = 20;
-
-    if (dette < 0) {
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'bold');
+    if (reportDuMoisPrecedent !== 0) {
+      doc.setFontSize(10); doc.setFont(undefined, 'bold');
       doc.setTextColor(220, 38, 38);
-      doc.text(`Report dette : ${fmt(dette)} €`, margin, y);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
+      doc.text(`Report période précédente : ${fmt(reportDuMoisPrecedent)} €`, margin, y);
+      doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal');
       y += 8;
     }
-
     y += 2;
 
-    // Left table: Fiches (Date | Type | H | Montant)
-    const leftX = margin;
-    const leftCols = [
-      { header: 'Date', w: 26 },
-      { header: 'Type', w: 20 },
-      { header: 'H', w: 14 },
-      { header: 'Montant', w: 28 },
-    ]; // 88mm
+    // Three-column layout
+    // Salaires: Date(20) + H(12) + Montant(22) = 54mm
+    // Gap: 5mm
+    // Retraits: Date(20) + Montant(22) = 42mm
+    // Gap: 5mm
+    // Notes: Client(34) + Date(18) + Montant(24) = 76mm
+    // Total: 54+5+42+5+76 = 182mm + 12(margin) = 194mm < 210mm ✓
+    const salCols = [{ header: 'Date', w: 20 }, { header: 'H', w: 12 }, { header: 'Montant', w: 22 }];
+    const retCols = [{ header: 'Date', w: 20 }, { header: 'Montant', w: 22 }];
+    const noteCols = [{ header: 'Client', w: 34 }, { header: 'Date', w: 18 }, { header: 'Montant', w: 24 }];
 
-    // Right table: Notes clients (Client | Date | Montant)
-    const rightX = leftX + leftCols.reduce((a, c) => a + c.w, 0) + 8; // 12+88+8=108
-    const rightCols = [{ header: 'Client', w: 40 }, { header: 'Date', w: 22 }, { header: 'Montant', w: 26 }]; // 88mm
+    const salX = margin;
+    const retX = salX + 54 + 5;
+    const noteX = retX + 42 + 5;
 
     const drawRow = (startX, cols, cy, cells, bold = false, strikethrough = false) => {
       let x = startX;
@@ -306,106 +324,141 @@ ${bkSection}
     };
 
     // Section labels
-    doc.setFontSize(8.5);
-    doc.setFont(undefined, 'bold');
-    doc.text('Fiches', leftX, y - 1);
-    doc.text('Notes clients reçues', rightX, y - 1);
+    doc.setFontSize(8.5); doc.setFont(undefined, 'bold');
+    doc.text('Salaires', salX, y - 1);
+    doc.setTextColor(220, 38, 38); doc.text('Retraits (−)', retX, y - 1); doc.setTextColor(0, 0, 0);
+    doc.text('Notes clients reçues (−)', noteX, y - 1);
     doc.setFont(undefined, 'normal');
 
-    // Headers
-    drawRow(leftX, leftCols, y, leftCols.map((c) => c.header), true);
-    drawRow(rightX, rightCols, y, rightCols.map((c) => c.header), true);
+    drawRow(salX, salCols, y, salCols.map((c) => c.header), true);
+    drawRow(retX, retCols, y, retCols.map((c) => c.header), true);
+    drawRow(noteX, noteCols, y, noteCols.map((c) => c.header), true);
 
-    let leftY = y + rowH;
-    let rightY = y + rowH;
+    let salY = y + rowH;
+    let retY = y + rowH;
+    let noteY = y + rowH;
 
-    // Fiches rows filtered by selected month
-    const fichesDuMoisPDF = [...fichesActives]
-      .filter((f) => (f.mois || f.date.substring(0, 7)) === selectedMois)
-      .sort((a, b) => b.date.localeCompare(a.date));
-    const totalFichesMoisPDF = fichesDuMoisPDF.reduce((a, b) => a + b.montant, 0);
-
-    fichesDuMoisPDF.forEach((f) => {
-      drawRow(leftX, leftCols, leftY, [
-        fmtDate(f.date),
-        f.type === 'retrait' ? 'Retrait' : 'Salaire',
-        f.type === 'salaire' ? f.heures + 'h' : '',
-        fmt(f.montant) + ' €',
-      ]);
-      leftY += rowH;
+    // Salaires
+    salairesDuMois.forEach((f) => {
+      drawRow(salX, salCols, salY, [fmtDate(f.date), f.heures + 'h', fmt(f.montant) + ' €']);
+      salY += rowH;
     });
-    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFichesMoisPDF) + ' €'], true);
-    leftY += rowH;
+    drawRow(salX, salCols, salY, ['Total', '', fmt(totalSalairesMois) + ' €'], true);
+    salY += rowH;
 
-    // Notes clients: active + reimbursed (strikethrough) for selected month
+    // Retraits
+    if (retraitsDuMois.length === 0) {
+      drawRow(retX, retCols, retY, ['Aucun', '']);
+      retY += rowH;
+    } else {
+      retraitsDuMois.forEach((f) => {
+        drawRow(retX, retCols, retY, [fmtDate(f.date), fmt(Math.abs(f.montant)) + ' €']);
+        retY += rowH;
+      });
+    }
+    drawRow(retX, retCols, retY, ['Total', fmt(totalRetraitsMois) + ' €'], true);
+    retY += rowH;
+
+    // Notes
     const rembNoteIdsThisMois = new Set(rembFichesDuMois.map((f) => f.noteId).filter(Boolean));
     const allNotesMoisPDF = getNotes()
       .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && (n.date || '').substring(0, 7) === selectedMois)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-    allNotesMoisPDF.forEach((n) => {
-      const isRemb = rembNoteIdsThisMois.has(n.id);
-      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], false, isRemb);
-      rightY += rowH;
-    });
-    if (allNotesMoisPDF.length > 0) {
-      drawRow(rightX, rightCols, rightY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
-      rightY += rowH;
-    }
-
-    // Notes remboursées (filtered by month)
-    if (rembFichesDuMois.length > 0) {
-      doc.setFontSize(7.5);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(37, 99, 235);
-      doc.text('Notes remboursées', rightX + 1, rightY + rowH - 2);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
-      doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
-      rightY += rowH;
-      rembFichesDuMois.forEach((f) => {
-        drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
-        rightY += rowH;
+    if (allNotesMoisPDF.length === 0) {
+      drawRow(noteX, noteCols, noteY, ['Aucune', '', '']);
+      noteY += rowH;
+    } else {
+      allNotesMoisPDF.forEach((n) => {
+        drawRow(noteX, noteCols, noteY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], false, rembNoteIdsThisMois.has(n.id));
+        noteY += rowH;
       });
-      drawRow(rightX, rightCols, rightY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
-      rightY += rowH;
+      drawRow(noteX, noteCols, noteY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
+      noteY += rowH;
     }
 
-    y = Math.max(leftY, rightY) + 8;
+    // Remboursements
+    if (rembFichesDuMois.length > 0) {
+      doc.setFontSize(7.5); doc.setFont(undefined, 'bold');
+      doc.setTextColor(37, 99, 235);
+      doc.text('Notes remboursées (+)', noteX + 1, noteY + rowH - 2);
+      doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal');
+      doc.rect(noteX, noteY, noteCols.reduce((a, c) => a + c.w, 0), rowH);
+      noteY += rowH;
+      rembFichesDuMois.forEach((f) => {
+        drawRow(noteX, noteCols, noteY, [f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        noteY += rowH;
+      });
+      drawRow(noteX, noteCols, noteY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
+      noteY += rowH;
+    }
+
+    y = Math.max(salY, retY, noteY) + 8;
 
     // BK section
     const bkSectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
     if (bkFichesDuMois.length > 0) {
-      doc.setFontSize(8.5);
-      doc.setFont(undefined, 'bold');
+      doc.setFontSize(8.5); doc.setFont(undefined, 'bold');
       doc.setTextColor(234, 88, 12);
       doc.text('BK (déduit du total)', margin, y - 1);
-      doc.setFont(undefined, 'normal');
-      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal'); doc.setTextColor(0, 0, 0);
       drawRow(margin, bkSectionCols, y, bkSectionCols.map((c) => c.header), true);
       y += rowH;
-      bkFichesDuMois.forEach((f) => {
-        drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']);
-        y += rowH;
-      });
+      bkFichesDuMois.forEach((f) => { drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']); y += rowH; });
       drawRow(margin, bkSectionCols, y, ['Total BK', fmt(totalBk) + ' €'], true);
       y += rowH + 8;
     }
 
     // Grand total
-    doc.setFontSize(11);
-    doc.setFont(undefined, 'bold');
+    doc.setFontSize(11); doc.setFont(undefined, 'bold');
     doc.text(`Total Général : ${fmt(totalGeneral)} €`, margin, y);
     y += 6;
-    doc.setFontSize(8);
-    doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalFichesMoisPDF)} (fiches) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)`;
-    if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
+    doc.setFontSize(8); doc.setFont(undefined, 'normal');
+    let formula = `${fmt(totalSalairesMois)} (sal.) - ${fmt(totalRetraitsMois)} (retraits) - ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) - ${fmt(totalBk)} (BK)`;
+    if (reportDuMoisPrecedent !== 0) formula += ` + ${fmt(reportDuMoisPrecedent)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
 
     doc.save('pierre-fiches.pdf');
   };
+
+  const renderFicheRow = (f) => (
+    <div key={f.id}>
+      {editId === f.id ? (
+        <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {['salaire', 'retrait'].map((t) => (
+              <button key={t}
+                className={editData.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
+                style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => setEditData({ ...editData, type: t })}
+              >{t === 'salaire' ? 'Salaire' : 'Retrait'}</button>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <input className="input-field" type="date" value={editData.date} onChange={(e) => setEditData({ ...editData, date: e.target.value })} />
+            {editData.type === 'retrait'
+              ? <input className="input-field" type="number" placeholder="Montant" value={editData.montantDirect} onChange={(e) => setEditData({ ...editData, montantDirect: e.target.value })} />
+              : <input className="input-field" type="number" placeholder="Heures" value={editData.heures} onChange={(e) => setEditData({ ...editData, heures: e.target.value })} />
+            }
+            <input className="input-field" value={editData.notes} onChange={(e) => setEditData({ ...editData, notes: e.target.value })} placeholder="Notes" />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={handleSaveEdit}>✓ Sauvegarder</button>
+            <button className="btn btn-secondary" onClick={() => setEditId(null)}>Annuler</button>
+          </div>
+        </div>
+      ) : (
+        <div className="row-hover nota-row" onClick={() => handleEdit(f)} style={{ cursor: 'pointer' }}>
+          <span style={{ width: 90, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
+          {f.type === 'salaire' && <span style={{ width: 50, fontSize: 12, color: '#6b7280' }}>{f.heures}h</span>}
+          <span style={{ flex: 1, fontWeight: 600 }}>{fmt(f.type === 'retrait' ? Math.abs(f.montant) : f.montant)} €</span>
+          {f.notes && <span style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>{f.notes}</span>}
+          <button className="delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }}>✕</button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="page-container">
@@ -417,6 +470,22 @@ ${bkSection}
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
               <button className="btn btn-danger" onClick={handleReset}>Réinitialiser</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmValider && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Valider {fmtMois(selectedMois)}</h3>
+            <p>
+              Le total de ce mois (<strong>{fmt(totalGeneral)} €</strong>) sera reporté comme solde de départ pour <strong>{fmtMois(nextMonth(selectedMois))}</strong>.
+              {totalGeneral < 0 && ' La dette sera portée au mois suivant.'}
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmValider(false)}>Annuler</button>
+              <button className="btn btn-primary" onClick={handleValiderMois}>Valider</button>
             </div>
           </div>
         </div>
@@ -441,9 +510,9 @@ ${bkSection}
         </div>
       )}
 
-      {dette < 0 && (
+      {reportDuMoisPrecedent < 0 && (
         <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626' }}>
-          Report période précédente : {fmt(dette)} €
+          Report période précédente : {fmt(reportDuMoisPrecedent)} €
         </div>
       )}
 
@@ -473,79 +542,78 @@ ${bkSection}
                 }}
               >
                 {fmtMois(m)}
-                <span style={{ marginLeft: 6, fontWeight: 400, opacity: 0.8 }}>{fmt(moisMap[m].total)} €</span>
+                <span style={{ marginLeft: 6, fontWeight: 400, opacity: 0.8 }}>{fmt(moisMap[m].salaires)} €</span>
+                {moisMap[m].retraits > 0 && (
+                  <span style={{ marginLeft: 4, fontWeight: 400, opacity: 0.7, color: selectedMois === m ? '#fca5a5' : '#dc2626' }}>−{fmt(moisMap[m].retraits)} €</span>
+                )}
+                {monthReports[nextMonth(m)] !== undefined && (
+                  <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>✓</span>
+                )}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Fiches du mois sélectionné */}
+      {/* Fiches du mois sélectionné — deux colonnes */}
       {selectedMois && (
         <div className="card" style={{ borderTopLeftRadius: moisList.length > 0 ? 0 : undefined, borderTopRightRadius: moisList.length > 0 ? 0 : undefined, borderTop: moisList.length > 0 ? '1px solid #e5e7eb' : undefined }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ fontWeight: 700, color: '#1f2937' }}>{fmtMois(selectedMois)}</div>
-            {moisMap[selectedMois] && (
-              <button
-                className="btn btn-danger"
-                style={{ fontSize: 12, padding: '4px 10px' }}
-                onClick={() => setConfirmDeleteMois(selectedMois)}
-              >
-                Supprimer le mois
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {moisMap[selectedMois] && (
+                <>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => setConfirmValider(true)}
+                  >
+                    Valider le mois
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => setConfirmDeleteMois(selectedMois)}
+                  >
+                    Supprimer
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          {fichesOfMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune fiche ce mois</div>}
+          {/* Report du mois précédent si validé */}
+          {monthReports[selectedMois] !== undefined && (
+            <div style={{ background: monthReports[selectedMois] < 0 ? '#fef2f2' : '#f0fdf4', color: monthReports[selectedMois] < 0 ? '#dc2626' : '#15803d', padding: '6px 12px', borderRadius: 6, marginBottom: 10, fontSize: 13, fontWeight: 600 }}>
+              Report {fmtMois(/* previous month */ (() => { const [y, mo] = selectedMois.split('-').map(Number); return mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`; })())} : {fmt(monthReports[selectedMois])} €
+            </div>
+          )}
 
-          {[...fichesOfMois].sort((a, b) => b.date.localeCompare(a.date)).map((f) => (
-            <div key={f.id}>
-              {editId === f.id ? (
-                <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    {['salaire', 'retrait'].map((t) => (
-                      <button key={t}
-                        className={editData.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
-                        style={{ fontSize: 12, padding: '4px 10px' }}
-                        onClick={() => setEditData({ ...editData, type: t })}
-                      >{t === 'salaire' ? 'Salaire' : 'Retrait'}</button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <input className="input-field" type="date" value={editData.date} onChange={(e) => setEditData({ ...editData, date: e.target.value })} />
-                    {editData.type === 'retrait'
-                      ? <input className="input-field" type="number" placeholder="Montant" value={editData.montantDirect} onChange={(e) => setEditData({ ...editData, montantDirect: e.target.value })} />
-                      : <input className="input-field" type="number" placeholder="Heures" value={editData.heures} onChange={(e) => setEditData({ ...editData, heures: e.target.value })} />
-                    }
-                    <input className="input-field" value={editData.notes} onChange={(e) => setEditData({ ...editData, notes: e.target.value })} placeholder="Notes" />
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-primary" onClick={handleSaveEdit}>✓ Sauvegarder</button>
-                    <button className="btn btn-secondary" onClick={() => setEditId(null)}>Annuler</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="row-hover nota-row" onClick={() => handleEdit(f)} style={{ cursor: 'pointer' }}>
-                  <span style={{ width: 90, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 10, marginRight: 6,
-                    background: f.type === 'retrait' ? '#fef2f2' : f.type === 'remboursement_note' ? '#eff6ff' : '#f0fdf4',
-                    color: f.type === 'retrait' ? '#dc2626' : f.type === 'remboursement_note' ? '#2563eb' : '#15803d',
-                  }}>{f.type === 'retrait' ? 'Retrait' : f.type === 'remboursement_note' ? 'Remb.' : 'Salaire'}</span>
-                  {f.type === 'salaire' && <span style={{ width: 50 }}>{f.heures}h</span>}
-                  <span style={{ flex: 1, fontWeight: 600, color: f.type === 'retrait' ? '#dc2626' : undefined }}>{fmt(f.montant)} €</span>
-                  {f.notes && <span style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>{f.notes}</span>}
-                  <button className="delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }}>✕</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* Colonne Salaires */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#15803d', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Salaires</div>
+              {salairesDuMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucun</div>}
+              {salairesDuMois.map(renderFicheRow)}
+              {salairesDuMois.length > 0 && (
+                <div style={{ marginTop: 8, fontWeight: 700, color: '#15803d', fontSize: 13 }}>
+                  Total : {fmt(totalSalairesMois)} €
                 </div>
               )}
             </div>
-          ))}
 
-          {fichesOfMois.length > 0 && (
-            <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
-              Total {fmtMois(selectedMois)} : {fmt(moisMap[selectedMois]?.total || 0)} €
+            {/* Colonne Retraits */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#dc2626', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Retraits (−)</div>
+              {retraitsDuMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucun</div>}
+              {retraitsDuMois.map(renderFicheRow)}
+              {retraitsDuMois.length > 0 && (
+                <div style={{ marginTop: 8, fontWeight: 700, color: '#dc2626', fontSize: 13 }}>
+                  Total : {fmt(totalRetraitsMois)} €
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -583,11 +651,6 @@ ${bkSection}
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>{heures}h × 10 = <strong>{fmt(parseFloat(heures) * 10)} €</strong></div>
           )}
           <button className="btn btn-primary" onClick={handleSaveFiche} style={{ width: '100%' }}>Enregistrer</button>
-          {fichesActives.length > 0 && (
-            <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
-              Total fiches : {fmt(totalFiches)} €
-            </div>
-          )}
         </div>
 
         {/* Notes clients */}
@@ -623,17 +686,17 @@ ${bkSection}
           </div>
 
           <div className="card">
-            <div className="card-title">Notes clients reçues</div>
-            <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotes)} €</div>
+            <div className="card-title">Notes clients reçues (−)</div>
+            <div className="blue-total" style={{ marginBottom: 14, background: totalNotes > 0 ? '#fef2f2' : undefined, color: totalNotes > 0 ? '#dc2626' : undefined }}>
+              Total : {fmt(totalNotes)} €
+            </div>
             {(() => {
               const notesDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
               if (notesDuMois.length === 0) return <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note ce mois</div>;
               return [...notesDuMois].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((n) => (
                 <div key={n.id} className="nota-row">
-                  <span style={{ flex: 1, fontSize: 13 }}>
-                    {n.personne} → Pierre ({fmtDate(n.date)})
-                  </span>
-                  <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
+                  <span style={{ flex: 1, fontSize: 13 }}>{n.personne} → Pierre ({fmtDate(n.date)})</span>
+                  <span style={{ fontWeight: 600, color: '#dc2626' }}>{fmt(n.montant)} €</span>
                 </div>
               ));
             })()}
@@ -641,7 +704,7 @@ ${bkSection}
 
           {rembFichesDuMois.length > 0 && (
             <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
-              <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées</div>
+              <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées (+)</div>
               {rembFichesDuMois.map((f) => (
                 <div key={f.id} className="row-hover nota-row">
                   <span style={{ flex: 1, fontSize: 13 }}>
@@ -674,35 +737,20 @@ ${bkSection}
           </div>
         ))}
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <input
-            className="input-field"
-            type="date"
-            value={bkDate}
-            onChange={(e) => setBkDate(e.target.value)}
-            style={{ width: 140 }}
-          />
-          <input
-            className="input-field"
-            type="number"
-            placeholder="Montant BK..."
-            value={bkInput}
-            onChange={(e) => setBkInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddBk()}
-            style={{ flex: 1 }}
-          />
+          <input className="input-field" type="date" value={bkDate} onChange={(e) => setBkDate(e.target.value)} style={{ width: 140 }} />
+          <input className="input-field" type="number" placeholder="Montant BK..." value={bkInput}
+            onChange={(e) => setBkInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddBk()} style={{ flex: 1 }} />
           <button className="btn" style={{ background: '#ea580c', color: 'white' }} onClick={handleAddBk}>+</button>
         </div>
-        <div style={{ marginTop: 10, fontWeight: 700, color: '#ea580c' }}>
-          Total BK : {fmt(totalBk)} €
-        </div>
+        <div style={{ marginTop: 10, fontWeight: 700, color: '#ea580c' }}>Total BK : {fmt(totalBk)} €</div>
       </div>
 
       {/* Total Général */}
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalFiches)} (fiches) + {fmt(totalNotes)} (notes) + {fmt(totalRemb)} (remb.) − {fmt(totalBk)} (BK)
-          {dette !== 0 && ` + ${fmt(dette)} (report)`}
+          {fmt(totalSalairesMois)} (sal.) − {fmt(totalRetraitsMois)} (retraits) − {fmt(totalNotes)} (notes) + {fmt(totalRemb)} (remb.) − {fmt(totalBk)} (BK)
+          {reportDuMoisPrecedent !== 0 && ` + ${fmt(reportDuMoisPrecedent)} (report)`}
         </div>
       </div>
     </div>

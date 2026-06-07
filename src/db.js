@@ -24,6 +24,7 @@ export function getAllData() {
     bopGlobaux: getBopGlobaux(),
     ancienServeurs: getAncienServeurs(),
     ancienServeurEntries: getAncienServeurEntries(),
+    pierreMonthReports: getPierreMonthReports(),
   };
 }
 
@@ -77,6 +78,9 @@ export function setAllData(data) {
   // hiddenNotes: union of both (a hidden note stays hidden)
   if (data?.hiddenNotes !== undefined) {
     localStorage.setItem('hiddenNotes', JSON.stringify([...new Set([...getHiddenNotes(), ...data.hiddenNotes])]));
+  }
+  if (data?.pierreMonthReports !== undefined) {
+    localStorage.setItem('pierreMonthReports', JSON.stringify({ ...data.pierreMonthReports, ...getPierreMonthReports() }));
   }
   reconcilePersonnes();
   reconcileRemboursements();
@@ -304,17 +308,28 @@ export function resetAllServeurs() {
     .forEach((p) => resetServeur(p.key));
 }
 
+// --- Pierre Month Reports (carry-over when validating a month) ---
+export function getPierreMonthReports() {
+  try { return JSON.parse(localStorage.getItem('pierreMonthReports') || '{}'); } catch { return {}; }
+}
+export function savePierreMonthReports(r) {
+  localStorage.setItem('pierreMonthReports', JSON.stringify(r));
+  scheduleDriveSync();
+}
+
 // Reset Pierre: delete all his fichesPierre + hide his received notes
-// Debt = total général complet (fiches + notes - BK + dette précédente).
+// Debt = salaires - retraits - notes + remboursements - BK + dette précédente
 export function resetPierre() {
   const allFiches = getFichesPierre();
-  const totalFiches = allFiches.filter((f) => f.type !== 'bk').reduce((a, b) => a + b.montant, 0);
+  const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
+  const totalRetraits = allFiches.filter((f) => f.type === 'retrait').reduce((a, b) => a + Math.abs(b.montant), 0);
+  const totalRemb = allFiches.filter((f) => f.type === 'remboursement_note').reduce((a, b) => a + Math.abs(b.montant), 0);
   const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
     .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = (totalFiches || 0) + (totalNotes || 0) - (totalBk || 0) + (getDette('pierre') || 0);
+  const effectiveTotal = (totalSalaires || 0) - (totalRetraits || 0) - (totalNotes || 0) + (totalRemb || 0) - (totalBk || 0) + (getDette('pierre') || 0);
 
   const dettes = getDettes();
   if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
@@ -324,6 +339,8 @@ export function resetPierre() {
   }
   saveDettes(dettes);
 
+  // Full reset clears all month reports
+  localStorage.setItem('pierreMonthReports', JSON.stringify({}));
   localStorage.setItem('fichesPierre', JSON.stringify([]));
   const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
