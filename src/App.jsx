@@ -9,6 +9,7 @@ import Personnes from './pages/Personnes';
 import Prets from './pages/Prets';
 import AncienServeurs from './pages/AncienServeurs';
 import AncienServeur from './pages/AncienServeur';
+import Salaires from './pages/Salaires';
 import { getPersonnes, getAllData, setAllData, setDriveSyncCallback, getNotes, saveNotes, resetTous, reconcilePersonnes } from './db';
 import { initGoogleAuth, signIn, signOut, isSignedIn, tryRestoreSession, getUserInfo } from './googleAuth';
 import { loadDataFromDrive, loadBackupFromDrive, saveDataToDrive, exportNotesToDrive, shouldExport } from './googleDrive';
@@ -167,6 +168,7 @@ function Navbar({ onLogout, onImportHistorique, onManualExport }) {
               {p.nom}
             </Link>
           ))}
+          <Link to="/salaires" onClick={() => setShowPanel(false)}>💰 Salaires</Link>
           <Link to="/prets" onClick={() => setShowPanel(false)}>📦 Prêts</Link>
           <Link to="/anciens-serveurs" onClick={() => setShowPanel(false)}>👴 Anciens serveurs</Link>
           <span onClick={handleImport} style={{ color: '#f59e0b', cursor: 'pointer' }}>
@@ -216,6 +218,7 @@ function AppContent({ onLogout, onImportHistorique, onManualExport }) {
         <Route path="/prets" element={<Prets />} />
         <Route path="/anciens-serveurs" element={<AncienServeurs />} />
         <Route path="/ancien-serveur/:key" element={<AncienServeur />} />
+        <Route path="/salaires" element={<Salaires />} />
       </Routes>
     </BrowserRouter>
   );
