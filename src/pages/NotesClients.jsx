@@ -41,6 +41,7 @@ export default function NotesClients() {
   const [sortDate, setSortDate] = useState('desc');
   const [exportSort, setExportSort] = useState('alpha');
   const [exportServeur, setExportServeur] = useState('tous');
+  const [exportModal, setExportModal] = useState(null); // null | 'global' | 'serveur' | 'client'
   const [search, setSearch] = useState('');
 
   const load = () => {
@@ -274,34 +275,64 @@ export default function NotesClients() {
         />
       </div>
 
+      {/* Export modal */}
+      {exportModal && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Export PDF — {exportModal === 'global' ? 'Liste globale' : exportModal === 'serveur' ? 'Par serveur' : 'Par client'}</h3>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Serveur</label>
+              <select
+                value={exportServeur}
+                onChange={(e) => setExportServeur(e.target.value)}
+                className="input-field"
+                style={{ width: '100%' }}
+              >
+                <option value="tous">Tous les serveurs</option>
+                {serveurList.map((s) => (
+                  <option key={s.key} value={s.key}>{s.nom}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Tri des notes</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className={exportSort === 'alpha' ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ fontSize: 13, flex: 1 }}
+                  onClick={() => setExportSort('alpha')}
+                >A → Z</button>
+                <button
+                  className={exportSort === 'date' ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ fontSize: 13, flex: 1 }}
+                  onClick={() => setExportSort('date')}
+                >Date</button>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setExportModal(null)}>Annuler</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setExportModal(null);
+                  if (exportModal === 'global') exportPDF();
+                  else exportPDFGroupe(exportModal);
+                }}
+              >Exporter</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Actions bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select
-          value={exportServeur}
-          onChange={(e) => setExportServeur(e.target.value)}
-          className="input-field"
-          style={{ fontSize: 12, padding: '5px 10px', height: 32, minWidth: 110 }}
-        >
-          <option value="tous">Tous les serveurs</option>
-          {serveurList.map((s) => (
-            <option key={s.key} value={s.key}>{s.nom}</option>
-          ))}
-        </select>
-        <button
-          className={exportSort === 'alpha' ? 'btn btn-primary' : 'btn btn-secondary'}
-          style={{ fontSize: 12, padding: '5px 12px' }}
-          onClick={() => setExportSort((s) => s === 'alpha' ? 'date' : 'alpha')}
-          title="Tri dans les exports PDF"
-        >
-          {exportSort === 'alpha' ? 'A→Z' : '📅 Date'}
-        </button>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={exportPDF}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setExportModal('global')}>
           Export PDF global
         </button>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('serveur')}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setExportModal('serveur')}>
           Export par serveur
         </button>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('client')}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setExportModal('client')}>
           Export par client
         </button>
         {totalHiddenCount > 0 && (
