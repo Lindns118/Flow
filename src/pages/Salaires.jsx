@@ -153,18 +153,32 @@ export default function Salaires() {
               {serveurs.map((s) => {
                 const net = s.salaire - s.bop;
                 const bk = bkByKey[s.key] || 0;
+                const final = net - bk;
                 return (
                   <div key={s.key} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 8, marginBottom: 8 }}>
                     <div
                       onClick={() => goToFiche(s.key)}
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: 2 }}
+                      style={{ cursor: 'pointer', marginBottom: 4 }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#2563eb' }}>{s.nom}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#16a34a' }}>{fmt(net)} €</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{s.nom}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#dc2626' }}>
-                      <span>- BK</span>
-                      <span>{fmt(bk)} €</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 1 }}>
+                      <span style={{ color: '#6b7280' }}>Salaire</span>
+                      <span style={{ color: '#16a34a', fontWeight: 600 }}>{fmt(s.salaire)} €</span>
+                    </div>
+                    {s.bop > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 1 }}>
+                        <span style={{ color: '#7c3aed' }}>− BOP</span>
+                        <span style={{ color: '#7c3aed', fontWeight: 600 }}>{fmt(s.bop)} €</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                      <span style={{ color: '#dc2626' }}>− BK</span>
+                      <span style={{ color: '#dc2626', fontWeight: 600 }}>{fmt(bk)} €</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderTop: '1px solid #e5e7eb', paddingTop: 3 }}>
+                      <span style={{ fontWeight: 700 }}>Net</span>
+                      <span style={{ fontWeight: 700, color: final < 0 ? '#dc2626' : '#1f2937' }}>{fmt(final)} €</span>
                     </div>
                   </div>
                 );
