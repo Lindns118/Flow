@@ -191,7 +191,6 @@ export default function NotesClients() {
 
     const groups = Object.values(grp).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     const colLabel = groupBy === 'serveur' ? 'Client' : 'Serveur';
-    const cols = [{ w: 65 }, { w: 28 }, { w: 35 }];
 
     const drawCell = (cx, cy, w, txt, bold) => {
       doc.rect(cx, cy, w, rowH);
@@ -214,26 +213,44 @@ export default function NotesClients() {
       doc.setTextColor(0, 0, 0); y += 5;
       doc.setFontSize(7.5);
       let x = margin;
-      [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
-      y += rowH;
-      [...group.notes].sort((a, b) => {
-        if (exportSort === 'alpha') {
-          const nameA = groupBy === 'serveur' ? (a.personne || '') : (a.destinataire_nom || a.destinataire_key || '');
-          const nameB = groupBy === 'serveur' ? (b.personne || '') : (b.destinataire_nom || b.destinataire_key || '');
-          return nameA.localeCompare(nameB, 'fr');
-        }
-        return (b.date || '').localeCompare(a.date || '');
-      }).forEach((n) => {
-        if (y > 278) { doc.addPage(); y = 20; }
-        doc.setFontSize(7.5); x = margin;
-        const row = groupBy === 'serveur'
-          ? [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']
-          : [n.destinataire_nom || n.destinataire_key || '', fmtDate(n.date), fmt(n.montant) + ' €'];
-        row.forEach((val, i) => { drawCell(x, y, cols[i].w, val, false); x += cols[i].w; });
+
+      if (exportSort === 'alpha') {
+        // Group by name and sum amounts
+        const byName = {};
+        group.notes.forEach((n) => {
+          const name = groupBy === 'serveur' ? (n.personne || '?') : (n.destinataire_nom || n.destinataire_key || '?');
+          if (!byName[name]) byName[name] = 0;
+          byName[name] += n.montant;
+        });
+        const nameRows = Object.entries(byName).sort(([a], [b]) => a.localeCompare(b, 'fr'));
+        const colsAlpha = [{ w: 88 }, { w: 40 }];
+        [colLabel, 'Somme due'].forEach((h, i) => { drawCell(x, y, colsAlpha[i].w, h, true); x += colsAlpha[i].w; });
         y += rowH;
-      });
-      doc.setFontSize(7.5); x = margin;
-      ['Total', '', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, cols[i].w, val, true); x += cols[i].w; });
+        nameRows.forEach(([name, sum]) => {
+          if (y > 278) { doc.addPage(); y = 20; }
+          doc.setFontSize(7.5); x = margin;
+          [name, fmt(sum) + ' €'].forEach((val, i) => { drawCell(x, y, colsAlpha[i].w, val, false); x += colsAlpha[i].w; });
+          y += rowH;
+        });
+        x = margin;
+        ['Total', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, colsAlpha[i].w, val, true); x += colsAlpha[i].w; });
+      } else {
+        const cols = [{ w: 65 }, { w: 28 }, { w: 35 }];
+        [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
+        y += rowH;
+        [...group.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).forEach((n) => {
+          if (y > 278) { doc.addPage(); y = 20; }
+          doc.setFontSize(7.5); x = margin;
+          const row = groupBy === 'serveur'
+            ? [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']
+            : [n.destinataire_nom || n.destinataire_key || '', fmtDate(n.date), fmt(n.montant) + ' €'];
+          row.forEach((val, i) => { drawCell(x, y, cols[i].w, val, false); x += cols[i].w; });
+          y += rowH;
+        });
+        x = margin;
+        ['Total', '', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, cols[i].w, val, true); x += cols[i].w; });
+      }
+
       y += rowH + 6;
     });
     doc.save(`notes-${groupBy}.pdf`);
