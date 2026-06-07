@@ -40,6 +40,7 @@ export default function NotesClients() {
   const [triPar, setTriPar] = useState('serveur');
   const [sortDate, setSortDate] = useState('desc');
   const [exportSort, setExportSort] = useState('alpha');
+  const [exportServeur, setExportServeur] = useState('tous');
   const [search, setSearch] = useState('');
 
   const load = () => {
@@ -77,6 +78,18 @@ export default function NotesClients() {
   );
 
   const totalHiddenCount = pairHiddenIds.size;
+
+  // Unique servers list for export filter
+  const serveurList = [...new Map(
+    notes
+      .filter((n) => n.destinataire_key)
+      .map((n) => [n.destinataire_key, n.destinataire_nom || n.destinataire_key])
+  ).entries()]
+    .sort(([, a], [, b]) => a.localeCompare(b, 'fr'))
+    .map(([key, nom]) => ({ key, nom }));
+
+  const filterByExportServeur = (arr) =>
+    exportServeur === 'tous' ? arr : arr.filter((n) => n.destinataire_key === exportServeur);
 
   const handleDelete = (id) => { deleteNote(id); load(); };
 
@@ -122,7 +135,7 @@ export default function NotesClients() {
     doc.text('Notes Clients' + (search.trim() ? ` — "${search.trim()}"` : ''), margin, 12);
     doc.setFont(undefined, 'normal');
 
-    const activeNotes = filteredNotes
+    const activeNotes = filterByExportServeur(filteredNotes)
       .filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id))
       .sort((a, b) => exportSort === 'alpha'
         ? (a.personne || '').localeCompare(b.personne || '', 'fr')
@@ -164,7 +177,7 @@ export default function NotesClients() {
     doc.text(title, margin, 12); doc.setFont(undefined, 'normal');
 
     const grp = {};
-    filteredNotes.filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id)).forEach((n) => {
+    filterByExportServeur(filteredNotes).filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id)).forEach((n) => {
       const k = groupBy === 'serveur'
         ? (n.destinataire_key || 'inconnu')
         : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
@@ -263,6 +276,17 @@ export default function NotesClients() {
 
       {/* Actions bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select
+          value={exportServeur}
+          onChange={(e) => setExportServeur(e.target.value)}
+          className="input-field"
+          style={{ fontSize: 12, padding: '5px 10px', height: 32, minWidth: 110 }}
+        >
+          <option value="tous">Tous les serveurs</option>
+          {serveurList.map((s) => (
+            <option key={s.key} value={s.key}>{s.nom}</option>
+          ))}
+        </select>
         <button
           className={exportSort === 'alpha' ? 'btn btn-primary' : 'btn btn-secondary'}
           style={{ fontSize: 12, padding: '5px 12px' }}
