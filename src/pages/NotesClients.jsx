@@ -199,7 +199,11 @@ export default function NotesClients() {
       let x = margin;
       [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
       y += rowH;
-      [...group.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).forEach((n) => {
+      [...group.notes].sort((a, b) => {
+        const nameA = groupBy === 'serveur' ? (a.personne || '') : (a.destinataire_nom || a.destinataire_key || '');
+        const nameB = groupBy === 'serveur' ? (b.personne || '') : (b.destinataire_nom || b.destinataire_key || '');
+        return nameA.localeCompare(nameB, 'fr');
+      }).forEach((n) => {
         if (y > 278) { doc.addPage(); y = 20; }
         doc.setFontSize(7.5); x = margin;
         const row = groupBy === 'serveur'
