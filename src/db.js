@@ -266,17 +266,20 @@ export function setBopGlobal(key, val) {
 }
 
 // Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
-// Debt = total général complet (salaires + notes - BOP - BK + dette précédente).
+// Debt = total général complet (salaires + notes + remb - BOP - BK + dette précédente).
 export function resetServeur(key) {
   const allFiches = getFiches().filter((f) => f.personne_key === key);
   const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
   const totalBop = allFiches.filter((f) => f.type === 'bop').reduce((a, b) => a + b.montant, 0);
   const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
+  const rembFiches = allFiches.filter((f) => f.type === 'remboursement_note');
+  const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
+  const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
-    .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id))
+    .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id) && !rembNoteIds.has(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
+  const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) + (totalRemb || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
 
   const dettes = getDettes();
   if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
