@@ -39,6 +39,7 @@ export default function NotesClients() {
   const [editData, setEditData] = useState({});
   const [triPar, setTriPar] = useState('serveur');
   const [sortDate, setSortDate] = useState('desc');
+  const [exportSort, setExportSort] = useState('alpha');
   const [search, setSearch] = useState('');
 
   const load = () => {
@@ -123,7 +124,9 @@ export default function NotesClients() {
 
     const activeNotes = filteredNotes
       .filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id))
-      .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
+      .sort((a, b) => exportSort === 'alpha'
+        ? (a.personne || '').localeCompare(b.personne || '', 'fr')
+        : (b.date || '').localeCompare(a.date || ''));
 
     const drawRow = (cells, bold = false) => {
       let x = margin;
@@ -200,9 +203,12 @@ export default function NotesClients() {
       [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
       y += rowH;
       [...group.notes].sort((a, b) => {
-        const nameA = groupBy === 'serveur' ? (a.personne || '') : (a.destinataire_nom || a.destinataire_key || '');
-        const nameB = groupBy === 'serveur' ? (b.personne || '') : (b.destinataire_nom || b.destinataire_key || '');
-        return nameA.localeCompare(nameB, 'fr');
+        if (exportSort === 'alpha') {
+          const nameA = groupBy === 'serveur' ? (a.personne || '') : (a.destinataire_nom || a.destinataire_key || '');
+          const nameB = groupBy === 'serveur' ? (b.personne || '') : (b.destinataire_nom || b.destinataire_key || '');
+          return nameA.localeCompare(nameB, 'fr');
+        }
+        return (b.date || '').localeCompare(a.date || '');
       }).forEach((n) => {
         if (y > 278) { doc.addPage(); y = 20; }
         doc.setFontSize(7.5); x = margin;
@@ -257,6 +263,14 @@ export default function NotesClients() {
 
       {/* Actions bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          className={exportSort === 'alpha' ? 'btn btn-primary' : 'btn btn-secondary'}
+          style={{ fontSize: 12, padding: '5px 12px' }}
+          onClick={() => setExportSort((s) => s === 'alpha' ? 'date' : 'alpha')}
+          title="Tri dans les exports PDF"
+        >
+          {exportSort === 'alpha' ? 'A→Z' : '📅 Date'}
+        </button>
         <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={exportPDF}>
           Export PDF global
         </button>
