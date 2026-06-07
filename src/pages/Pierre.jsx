@@ -103,7 +103,8 @@ export default function Pierre() {
 
   // Carry-over: use month report if available (already includes previous dette), else fall back to global dette
   const reportDuMoisPrecedent = monthReports[selectedMois] !== undefined ? monthReports[selectedMois] : dette;
-  const totalGeneral = totalSalairesMois - totalRetraitsMois - totalNotes + totalRemb - totalBk + reportDuMoisPrecedent;
+  // Notes are stored with their natural sign (negative = reduces Pierre's total, positive = increases)
+  const totalGeneral = totalSalairesMois - totalRetraitsMois + totalNotes + totalRemb - totalBk + reportDuMoisPrecedent;
 
   const handleValiderMois = () => {
     const reports = getPierreMonthReports();
@@ -211,7 +212,8 @@ export default function Pierre() {
       </tbody></table>` : '';
 
     const reportLine = reportDuMoisPrecedent !== 0 ? `<p class="dette">Report période précédente : ${fmt(reportDuMoisPrecedent)} €</p>` : '';
-    const formula = `${fmt(totalSalairesMois)} (sal.) − ${fmt(totalRetraitsMois)} (retraits) − ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${reportDuMoisPrecedent !== 0 ? ` + ${fmt(reportDuMoisPrecedent)} (report)` : ''} = ${fmt(totalGeneral)} €`;
+    const notesSign = totalNotes >= 0 ? `+ ${fmt(totalNotes)}` : `− ${fmt(Math.abs(totalNotes))}`;
+    const formula = `${fmt(totalSalairesMois)} (sal.) − ${fmt(totalRetraitsMois)} (retraits) ${notesSign} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${reportDuMoisPrecedent !== 0 ? ` + ${fmt(reportDuMoisPrecedent)} (report)` : ''} = ${fmt(totalGeneral)} €`;
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pierre — ${fmtMois(selectedMois)}</title>
 <style>
@@ -414,7 +416,8 @@ ${bkSection}
     doc.text(`Total Général : ${fmt(totalGeneral)} €`, margin, y);
     y += 6;
     doc.setFontSize(8); doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalSalairesMois)} (sal.) - ${fmt(totalRetraitsMois)} (retraits) - ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) - ${fmt(totalBk)} (BK)`;
+    const notesSignPDF = totalNotes >= 0 ? `+ ${fmt(totalNotes)}` : `- ${fmt(Math.abs(totalNotes))}`;
+    let formula = `${fmt(totalSalairesMois)} (sal.) - ${fmt(totalRetraitsMois)} (retraits) ${notesSignPDF} (notes) + ${fmt(totalRemb)} (remb.) - ${fmt(totalBk)} (BK)`;
     if (reportDuMoisPrecedent !== 0) formula += ` + ${fmt(reportDuMoisPrecedent)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
@@ -687,7 +690,7 @@ ${bkSection}
 
           <div className="card">
             <div className="card-title">Notes clients reçues (−)</div>
-            <div className="blue-total" style={{ marginBottom: 14, background: totalNotes > 0 ? '#fef2f2' : undefined, color: totalNotes > 0 ? '#dc2626' : undefined }}>
+            <div className="blue-total" style={{ marginBottom: 14, background: totalNotes < 0 ? '#fef2f2' : undefined, color: totalNotes < 0 ? '#dc2626' : undefined }}>
               Total : {fmt(totalNotes)} €
             </div>
             {(() => {
@@ -749,7 +752,7 @@ ${bkSection}
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalSalairesMois)} (sal.) − {fmt(totalRetraitsMois)} (retraits) − {fmt(totalNotes)} (notes) + {fmt(totalRemb)} (remb.) − {fmt(totalBk)} (BK)
+          {fmt(totalSalairesMois)} (sal.) − {fmt(totalRetraitsMois)} (retraits) {totalNotes >= 0 ? `+ ${fmt(totalNotes)}` : `− ${fmt(Math.abs(totalNotes))}`} (notes) + {fmt(totalRemb)} (remb.) − {fmt(totalBk)} (BK)
           {reportDuMoisPrecedent !== 0 && ` + ${fmt(reportDuMoisPrecedent)} (report)`}
         </div>
       </div>
