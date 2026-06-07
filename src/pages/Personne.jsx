@@ -678,7 +678,7 @@ ${bopGlobal !== 0 ? `<p class="bop-global">BOP total : ${fmt(bopGlobal)} €</p>
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes) - {fmt(totalBop)} (BOP) - {fmt(totalBk)} (BK)
+          {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes){totalRemb > 0 ? ` + ${fmt(totalRemb)} (remb.)` : ''} - {fmt(totalBop)} (BOP) - {fmt(totalBk)} (BK)
           {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>
