@@ -6,39 +6,52 @@ import jsPDF from 'jspdf';
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 
+// BOP is stored positive but represents a deduction — negate for display/calc
+const effectif = (f) => f.type === 'bop' ? -f.montant : f.montant;
+
 export default function Salaires() {
   const [fiches, setFiches] = useState([]);
+  const [bkByKey, setBkByKey] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
-    const regular = getFiches().filter((f) => f.type === 'salaire' || f.type === 'bop');
+    const allRegular = getFiches();
+    const regular = allRegular.filter((f) => f.type === 'salaire' || f.type === 'bop');
     const pierre = getFichesPierre()
       .filter((f) => f.type === 'salaire')
       .map((f) => ({ ...f, personne_key: 'pierre', personne_nom: 'Pierre' }));
     setFiches([...regular, ...pierre].sort((a, b) => b.date.localeCompare(a.date)));
+
+    // BK per server (regular servers)
+    const bk = {};
+    allRegular.filter((f) => f.type === 'bk').forEach((f) => {
+      bk[f.personne_key] = (bk[f.personne_key] || 0) + f.montant;
+    });
+    // BK for Pierre
+    const pierrebk = getFichesPierre().filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
+    if (pierrebk) bk['pierre'] = pierrebk;
+    setBkByKey(bk);
   }, []);
 
   const byDate = fiches.reduce((acc, f) => {
     if (!acc[f.date]) acc[f.date] = { date: f.date, entries: [], total: 0 };
     acc[f.date].entries.push(f);
-    acc[f.date].total += f.montant;
+    acc[f.date].total += effectif(f);
     return acc;
   }, {});
 
   const days = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
-  const grandTotal = fiches.reduce((a, b) => a + b.montant, 0);
+  const grandTotal = fiches.reduce((a, f) => a + effectif(f), 0);
 
   const byServeur = fiches.reduce((acc, f) => {
-    if (!acc[f.personne_key]) acc[f.personne_key] = { key: f.personne_key, nom: f.personne_nom, total: 0 };
-    acc[f.personne_key].total += f.montant;
+    if (!acc[f.personne_key]) acc[f.personne_key] = { key: f.personne_key, nom: f.personne_nom, salaire: 0, bop: 0 };
+    if (f.type === 'bop') acc[f.personne_key].bop += f.montant;
+    else acc[f.personne_key].salaire += f.montant;
     return acc;
   }, {});
-  const serveurs = Object.values(byServeur).sort((a, b) => b.total - a.total);
+  const serveurs = Object.values(byServeur).sort((a, b) => (b.salaire - b.bop) - (a.salaire - a.bop));
 
-  const goToFiche = (key) => {
-    if (key === 'pierre') navigate('/pierre');
-    else navigate(`/personne/${key}`);
-  };
+  const goToFiche = (key) => key === 'pierre' ? navigate('/pierre') : navigate(`/personne/${key}`);
 
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
@@ -80,7 +93,8 @@ export default function Salaires() {
       if (y > 280) { doc.addPage(); y = 12; drawRow(cols.map((c) => c.header), true); }
       doc.setFont(undefined, 'normal');
       day.entries.forEach((f) => {
-        drawRow(['', f.personne_nom, f.heures ? f.heures + 'h' : '', fmt(f.montant) + ' €']);
+        const sign = f.type === 'bop' ? '-' : '';
+        drawRow(['', f.personne_nom, f.heures ? f.heures + 'h' : (f.type === 'bop' ? 'BOP' : ''), sign + fmt(f.montant) + ' €']);
       });
     });
     doc.setFontSize(9); doc.setFont(undefined, 'bold');
@@ -112,41 +126,51 @@ export default function Salaires() {
             <div key={day.date} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#1f2937' }}>{fmtDate(day.date)}</div>
-                <div style={{ fontWeight: 700, color: '#2563eb', fontSize: 14 }}>{fmt(day.total)} €</div>
+                <div style={{ fontWeight: 700, color: day.total < 0 ? '#dc2626' : '#2563eb', fontSize: 14 }}>{fmt(day.total)} €</div>
               </div>
-              {[...day.entries].sort((a, b) => (a.personne_nom || '').localeCompare(b.personne_nom || '', 'fr')).map((f) => (
-                <div key={f.id} className="nota-row">
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.personne_nom}</span>
-                  {f.heures ? <span style={{ color: '#6b7280', fontSize: 12, marginRight: 8 }}>{f.heures}h</span> : null}
-                  {f.type === 'bop' && <span style={{ fontSize: 11, color: '#7c3aed', marginRight: 6, fontWeight: 600 }}>BOP</span>}
-                  <span style={{ fontWeight: 600, color: '#16a34a' }}>{fmt(f.montant)} €</span>
-                </div>
-              ))}
+              {[...day.entries].sort((a, b) => (a.personne_nom || '').localeCompare(b.personne_nom || '', 'fr')).map((f) => {
+                const val = effectif(f);
+                return (
+                  <div key={f.id} className="nota-row">
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.personne_nom}</span>
+                    {f.heures ? <span style={{ color: '#6b7280', fontSize: 12, marginRight: 8 }}>{f.heures}h</span> : null}
+                    {f.type === 'bop' && <span style={{ fontSize: 11, color: '#7c3aed', marginRight: 6, fontWeight: 600 }}>BOP</span>}
+                    <span style={{ fontWeight: 600, color: val < 0 ? '#dc2626' : '#16a34a' }}>
+                      {val < 0 ? '-' : ''}{fmt(Math.abs(val))} €
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
 
         {/* Colonne droite : totaux par serveur */}
         {serveurs.length > 0 && (
-          <div style={{ width: 200, flexShrink: 0 }}>
+          <div style={{ width: 220, flexShrink: 0 }}>
             <div className="card" style={{ position: 'sticky', top: 12 }}>
               <div className="card-title" style={{ marginBottom: 10 }}>Par serveur</div>
-              {serveurs.map((s) => (
-                <div
-                  key={s.key}
-                  onClick={() => goToFiche(s.key)}
-                  style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '7px 0', borderBottom: '1px solid #f3f4f6',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#2563eb' }}>{s.nom}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#16a34a' }}>{fmt(s.total)} €</span>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '2px solid #e5e7eb' }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>Total</span>
+              {serveurs.map((s) => {
+                const net = s.salaire - s.bop;
+                const bk = bkByKey[s.key] || 0;
+                return (
+                  <div key={s.key} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 8, marginBottom: 8 }}>
+                    <div
+                      onClick={() => goToFiche(s.key)}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: 2 }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#2563eb' }}>{s.nom}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#16a34a' }}>{fmt(net)} €</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#dc2626' }}>
+                      <span>- BK</span>
+                      <span>{fmt(bk)} €</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingTop: 8, borderTop: '2px solid #e5e7eb' }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Total net</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{fmt(grandTotal)} €</span>
               </div>
             </div>
