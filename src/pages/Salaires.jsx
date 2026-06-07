@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getFiches, getFichesPierre } from '../db';
 import jsPDF from 'jspdf';
 
@@ -7,6 +8,7 @@ const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 
 export default function Salaires() {
   const [fiches, setFiches] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const regular = getFiches().filter((f) => f.type === 'salaire' || f.type === 'bop');
@@ -26,13 +28,17 @@ export default function Salaires() {
   const days = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
   const grandTotal = fiches.reduce((a, b) => a + b.montant, 0);
 
-  // Group by server for summary
   const byServeur = fiches.reduce((acc, f) => {
-    if (!acc[f.personne_key]) acc[f.personne_key] = { nom: f.personne_nom, total: 0 };
+    if (!acc[f.personne_key]) acc[f.personne_key] = { key: f.personne_key, nom: f.personne_nom, total: 0 };
     acc[f.personne_key].total += f.montant;
     return acc;
   }, {});
   const serveurs = Object.values(byServeur).sort((a, b) => b.total - a.total);
+
+  const goToFiche = (key) => {
+    if (key === 'pierre') navigate('/pierre');
+    else navigate(`/personne/${key}`);
+  };
 
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
@@ -64,9 +70,7 @@ export default function Salaires() {
     };
 
     drawRow(cols.map((c) => c.header), true);
-
     days.forEach((day) => {
-      // Day header
       doc.setFontSize(8); doc.setFont(undefined, 'bold');
       doc.setFillColor(240, 240, 240);
       doc.rect(margin, y, totalW, rowH, 'F');
@@ -74,17 +78,13 @@ export default function Salaires() {
       doc.text(fmt(day.total) + ' €', margin + totalW - 31, y + rowH - 2);
       y += rowH;
       if (y > 280) { doc.addPage(); y = 12; drawRow(cols.map((c) => c.header), true); }
-
       doc.setFont(undefined, 'normal');
       day.entries.forEach((f) => {
         drawRow(['', f.personne_nom, f.heures ? f.heures + 'h' : '', fmt(f.montant) + ' €']);
       });
     });
-
-    // Total
     doc.setFontSize(9); doc.setFont(undefined, 'bold');
     doc.text(`Total général : ${fmt(grandTotal)} €`, margin, y + 6);
-
     doc.save('salaires.pdf');
   };
 
@@ -102,44 +102,57 @@ export default function Salaires() {
         </div>
       </div>
 
-      {/* Résumé par serveur */}
-      {serveurs.length > 0 && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-title" style={{ marginBottom: 10 }}>Résumé par serveur</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {serveurs.map((s) => (
-              <div key={s.nom} style={{
-                background: '#f0f9ff', borderRadius: 8, padding: '6px 14px',
-                display: 'flex', gap: 10, alignItems: 'center',
-              }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{s.nom}</span>
-                <span style={{ fontWeight: 700, color: '#2563eb', fontSize: 13 }}>{fmt(s.total)} €</span>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        {/* Colonne gauche : jours */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {days.length === 0 && (
+            <div className="card" style={{ color: '#9ca3af' }}>Aucun salaire enregistré</div>
+          )}
+          {days.map((day) => (
+            <div key={day.date} className="card" style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#1f2937' }}>{fmtDate(day.date)}</div>
+                <div style={{ fontWeight: 700, color: '#2563eb', fontSize: 14 }}>{fmt(day.total)} €</div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {days.length === 0 && (
-        <div className="card" style={{ color: '#9ca3af' }}>Aucun salaire enregistré</div>
-      )}
-
-      {days.map((day) => (
-        <div key={day.date} className="card" style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#1f2937' }}>{fmtDate(day.date)}</div>
-            <div style={{ fontWeight: 700, color: '#2563eb', fontSize: 14 }}>{fmt(day.total)} €</div>
-          </div>
-          {[...day.entries].sort((a, b) => (a.personne_nom || '').localeCompare(b.personne_nom || '', 'fr')).map((f) => (
-            <div key={f.id} className="nota-row">
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.personne_nom}</span>
-              {f.heures ? <span style={{ color: '#6b7280', fontSize: 12, marginRight: 8 }}>{f.heures}h</span> : null}
-              {f.type === 'bop' && <span style={{ fontSize: 11, color: '#7c3aed', marginRight: 6, fontWeight: 600 }}>BOP</span>}
-              <span style={{ fontWeight: 600, color: '#16a34a' }}>{fmt(f.montant)} €</span>
+              {[...day.entries].sort((a, b) => (a.personne_nom || '').localeCompare(b.personne_nom || '', 'fr')).map((f) => (
+                <div key={f.id} className="nota-row">
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.personne_nom}</span>
+                  {f.heures ? <span style={{ color: '#6b7280', fontSize: 12, marginRight: 8 }}>{f.heures}h</span> : null}
+                  {f.type === 'bop' && <span style={{ fontSize: 11, color: '#7c3aed', marginRight: 6, fontWeight: 600 }}>BOP</span>}
+                  <span style={{ fontWeight: 600, color: '#16a34a' }}>{fmt(f.montant)} €</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
-      ))}
+
+        {/* Colonne droite : totaux par serveur */}
+        {serveurs.length > 0 && (
+          <div style={{ width: 200, flexShrink: 0 }}>
+            <div className="card" style={{ position: 'sticky', top: 12 }}>
+              <div className="card-title" style={{ marginBottom: 10 }}>Par serveur</div>
+              {serveurs.map((s) => (
+                <div
+                  key={s.key}
+                  onClick={() => goToFiche(s.key)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '7px 0', borderBottom: '1px solid #f3f4f6',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#2563eb' }}>{s.nom}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#16a34a' }}>{fmt(s.total)} €</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '2px solid #e5e7eb' }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Total</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{fmt(grandTotal)} €</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
