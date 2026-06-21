@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { addFiche, addPersonne, addNote, getPersonnes, addFichePierre, slugify } from '../db';
+import { Link } from 'react-router-dom';
+import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret, deleteFiche, deleteFichePierre, deleteNote, getAncienServeurs, addAncienServeurEntry } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -10,21 +11,37 @@ export default function Calculator() {
   const [baseValues, setBaseValues] = useState(['', '', '']);
   const [diviseur, setDiviseur] = useState('');
   const [personRows, setPersonRows] = useState([
-    { prenom: '', date: today(), valeur: '' },
-    { prenom: '', date: today(), valeur: '' },
-    { prenom: '', date: today(), valeur: '' },
+    { key: '', nom: '', date: today(), valeur: '', isNew: false },
+    { key: '', nom: '', date: today(), valeur: '', isNew: false },
+    { key: '', nom: '', date: today(), valeur: '', isNew: false },
   ]);
   const [noteLines, setNoteLines] = useState([
     { personne: '', montant: '', destinataire: '', date: today() },
   ]);
-  const [lastNote, setLastNote] = useState(null);
+  const [sessionNotes, setSessionNotes] = useState([]);
   const [pierreHeures, setPierreHeures] = useState('');
   const [pierreDate, setPierreDate] = useState(today());
   const [personnesList, setPersonnesList] = useState([]);
   const [saveMsg, setSaveMsg] = useState('');
+  const [rowMsgs, setRowMsgs] = useState({});
+  const [pretForm, setPretForm] = useState({ type: 'emprunt', produit: '', nombre: '1', lieu: '', date: today() });
+  const [sessionPrets, setSessionPrets] = useState([]);
+  const [allNotes, setAllNotes] = useState([]);
+  const [lastSavedRow, setLastSavedRow] = useState({});
+  const [lastSavedNote, setLastSavedNote] = useState({});
+  const [rembLines, setRembLines] = useState([
+    { search: '', showDropdown: false, selectedNote: null, date: today() },
+  ]);
+  const [bopForm, setBopForm] = useState({ serveur_key: '', montant: '', date: today() });
+  const [sessionBops, setSessionBops] = useState([]);
+  const [ancienServeursList, setAncienServeursList] = useState([]);
+  const [ancienBopForm, setAncienBopForm] = useState({ serveur_key: '', montant: '', date: today() });
+  const [sessionAncienBops, setSessionAncienBops] = useState([]);
 
   useEffect(() => {
     setPersonnesList(getPersonnes());
+    setAllNotes(getNotes());
+    setAncienServeursList(getAncienServeurs());
   }, []);
 
   const results = baseValues.map((v, i) => (parseFloat(v) || 0) * MULTIPLIERS[i]);
@@ -38,14 +55,66 @@ export default function Calculator() {
   const totalPersonnes = personneResults.reduce((a, b) => a + b, 0);
 
   const flashMsg = (msg) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2500); };
+  const flashRowMsg = (i, msg) => {
+    setRowMsgs((prev) => ({ ...prev, [i]: msg }));
+    setTimeout(() => setRowMsgs((prev) => { const n = { ...prev }; delete n[i]; return n; }), 2500);
+  };
+
+  const handleSaveBop = () => {
+    if (!bopForm.serveur_key || !bopForm.montant) return;
+    const server = serverOptions.find((s) => s.key === bopForm.serveur_key);
+    if (!server) return;
+    const montant = parseFloat(bopForm.montant);
+    if (!montant) return;
+    addFiche(server.key, server.nom, bopForm.date, montant, 'bop');
+    setSessionBops((prev) => [{ ...bopForm, nom: server.nom, id: Date.now() }, ...prev]);
+    flashMsg('✓ BOP enregistré');
+    setBopForm({ serveur_key: bopForm.serveur_key, montant: '', date: today() });
+  };
+
+  const handleSaveAncienBop = () => {
+    if (!ancienBopForm.serveur_key || !ancienBopForm.montant) return;
+    const server = ancienServeursList.find((s) => s.key === ancienBopForm.serveur_key);
+    if (!server) return;
+    const montant = parseFloat(ancienBopForm.montant);
+    if (!montant) return;
+    addAncienServeurEntry(server.key, montant, ancienBopForm.date);
+    setSessionAncienBops((prev) => [{ ...ancienBopForm, nom: server.nom, id: Date.now() }, ...prev]);
+    flashMsg('✓ BOP ancien serveur enregistré');
+    setAncienBopForm({ serveur_key: ancienBopForm.serveur_key, montant: '', date: today() });
+  };
+
+  const handleSavePret = () => {
+    if (!pretForm.produit || !pretForm.lieu) return;
+    addPret(pretForm);
+    setSessionPrets((prev) => [{ ...pretForm, id: Date.now() }, ...prev]);
+    flashMsg(`✓ ${pretForm.type === 'emprunt' ? 'Emprunt' : 'Prêt'} enregistré`);
+    setPretForm({ type: pretForm.type, produit: '', nombre: '1', lieu: '', date: today() });
+  };
 
   const handleSaveFiche = (i) => {
     const p = personRows[i];
-    if (!p.prenom || !p.date) return;
-    addPersonne(p.prenom);
-    addFiche(slugify(p.prenom), p.prenom, p.date, personneResults[i], 'salaire');
+    const nom = p.isNew ? p.nom : p.nom;
+    if (!nom || !p.date) return;
+    if (p.key === 'pierre' || slugify(nom) === 'pierre') {
+      const id = addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
+      setLastSavedRow((prev) => ({ ...prev, [i]: { id, type: 'pierre', label: `Pierre — ${parseFloat(p.valeur) || 0}h — ${p.date.split('-').reverse().join('/')}` } }));
+      flashRowMsg(i, '✓ Fiche Pierre sauvegardée');
+      return;
+    }
+    const personne = addPersonne(nom);
+    const id = addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
+    setLastSavedRow((prev) => ({ ...prev, [i]: { id, type: 'fiche', label: `${personne.nom} — ${fmt(personneResults[i])} € — ${p.date.split('-').reverse().join('/')}` } }));
     setPersonnesList(getPersonnes());
-    flashMsg(`✓ Sauvegardé: ${p.prenom}`);
+    flashRowMsg(i, `✓ Sauvegardé: ${personne.nom}`);
+  };
+
+  const handleUndoRow = (i) => {
+    const saved = lastSavedRow[i];
+    if (!saved) return;
+    if (saved.type === 'pierre') deleteFichePierre(saved.id);
+    else deleteFiche(saved.id);
+    setLastSavedRow((prev) => { const n = { ...prev }; delete n[i]; return n; });
   };
 
   const handleSaveNote = (i) => {
@@ -54,20 +123,85 @@ export default function Calculator() {
     const dest = line.destinataire === 'pierre'
       ? { key: 'pierre', nom: 'Pierre' }
       : personnesList.find((p) => p.key === line.destinataire) || { key: line.destinataire, nom: line.destinataire };
+    const montant = -Math.abs(parseFloat(line.montant));
     const note = addNote({
       personne: line.personne,
-      montant: parseFloat(line.montant),
+      montant,
       destinataire_key: dest.key,
       destinataire_nom: dest.nom,
       date: line.date || today(),
     });
-    setLastNote(note);
+    setSessionNotes((prev) => [note, ...prev]);
+    setAllNotes(getNotes());
+    setLastSavedNote((prev) => ({ ...prev, [i]: { id: note.id, label: `${note.personne} → ${dest.nom} — ${fmt(montant)} €` } }));
     flashMsg('✓ Note enregistrée');
+  };
+
+  const handleUndoNote = (i) => {
+    const saved = lastSavedNote[i];
+    if (!saved) return;
+    deleteNote(saved.id);
+    setAllNotes(getNotes());
+    setSessionNotes((prev) => prev.filter((n) => n.id !== saved.id));
+    setLastSavedNote((prev) => { const n = { ...prev }; delete n[i]; return n; });
   };
 
   const addNoteLine = () => {
     setNoteLines([...noteLines, { personne: '', montant: '', destinataire: '', date: today() }]);
   };
+
+  const getActiveNotesSuggestions = (search) => {
+    const activeNotes = allNotes.filter((n) => !n.annulee && !n.rembourse);
+    if (!search.trim()) return activeNotes.slice(-6).reverse();
+    const q = search.toLowerCase();
+    return activeNotes.filter(
+      (n) => n.personne?.toLowerCase().includes(q) || n.destinataire_nom?.toLowerCase().includes(q)
+    );
+  };
+
+  const handleRembSearch = (i, value) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], search: value, showDropdown: true, selectedNote: null }; return u; });
+  };
+  const handleRembFocus = (i) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], showDropdown: true }; return u; });
+  };
+  const closeRembDropdown = (i) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], showDropdown: false }; return u; });
+  };
+  const handleRembSelect = (i, note) => {
+    setRembLines((prev) => {
+      const u = [...prev];
+      u[i] = { ...u[i], search: `${note.personne} → ${note.destinataire_nom} (${fmt(note.montant)} €)`, showDropdown: false, selectedNote: note };
+      return u;
+    });
+  };
+  const updateRembLine = (i, field, val) => {
+    setRembLines((prev) => { const u = [...prev]; u[i] = { ...u[i], [field]: val }; return u; });
+  };
+  const addRembLine = () => {
+    setRembLines((prev) => [...prev, { search: '', showDropdown: false, selectedNote: null, date: today() }]);
+  };
+  const handleSaveRemb = (i) => {
+    const line = rembLines[i];
+    if (!line.selectedNote) return;
+    rembourserNote(line.selectedNote.id, line.date);
+    setAllNotes(getNotes());
+    setRembLines((prev) => { const u = [...prev]; u[i] = { search: '', showDropdown: false, selectedNote: null, date: today() }; return u; });
+    flashMsg('✓ Note remboursée');
+  };
+
+  const addPersonRow = () => {
+    setPersonRows([...personRows, { key: '', nom: '', date: today(), valeur: '', isNew: false }]);
+  };
+
+  const removePersonRow = (i) => {
+    setPersonRows(personRows.filter((_, idx) => idx !== i));
+  };
+
+  const serverOptions = [
+    { key: 'pierre', nom: 'Pierre' },
+    ...personnesList.filter((p) => p.key !== 'pierre'),
+  ];
 
   const updateNote = (i, field, val) => {
     const updated = [...noteLines];
@@ -90,11 +224,48 @@ export default function Calculator() {
 
   const destOptions = [
     { key: 'pierre', nom: 'Pierre' },
-    ...personnesList,
+    ...personnesList.filter((p) => p.key !== 'pierre'),
+  ];
+
+  const allServers = [
+    { key: 'pierre', nom: 'Pierre' },
+    ...personnesList.filter((p) => p.key !== 'pierre'),
   ];
 
   return (
     <div className="page-container">
+      {/* Sticky top bar: back + servers */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: '#fff', borderBottom: '1px solid #e5e7eb',
+        margin: '0 -16px 16px', padding: '8px 16px',
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      }}>
+        <Link
+          to="/"
+          style={{
+            fontSize: 13, color: '#6b7280', textDecoration: 'none',
+            padding: '4px 10px', borderRadius: 6, border: '1px solid #d1d5db',
+            whiteSpace: 'nowrap', fontWeight: 600,
+          }}
+        >← Accueil</Link>
+        <div style={{ width: 1, height: 20, background: '#e5e7eb', flexShrink: 0 }} />
+        {allServers.map((s) => (
+          <Link
+            key={s.key}
+            to={s.key === 'pierre' ? '/pierre' : `/personne/${s.key}`}
+            style={{
+              fontSize: 13, fontWeight: 600, textDecoration: 'none',
+              padding: '4px 12px', borderRadius: 20,
+              background: '#eff6ff', color: '#2563eb',
+              border: '1px solid #bfdbfe', whiteSpace: 'nowrap',
+            }}
+          >
+            {s.nom}
+          </Link>
+        ))}
+      </div>
+
       {saveMsg && (
         <div style={{ background: '#d1fae5', color: '#065f46', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
           {saveMsg}
@@ -134,7 +305,7 @@ export default function Calculator() {
         </div>
         <div className="blue-total" style={{ marginBottom: 14 }}>TOTAL SOMMES : {fmt(totalSommes)} €</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="label-sm" style={{ width: 120 }}>DIVISEUR (+)</div>
+          <div className="label-sm" style={{ width: 120 }}>DIVISEUR (÷)</div>
           <input
             className="input-field"
             type="number"
@@ -153,12 +324,50 @@ export default function Calculator() {
         <div className="card">
           <div className="card-title">Personnes × H</div>
           {personRows.map((p, i) => (
-            <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: i < 2 ? '1px solid #f3f4f6' : 'none' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 80px 36px', gap: 8, alignItems: 'end' }}>
+            <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: i < personRows.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 80px 36px 28px', gap: 8, alignItems: 'end' }}>
                 <div>
-                  <div className="label-sm">Prénom</div>
-                  <input className="input-field" placeholder="Prénom" value={p.prenom}
-                    onChange={(e) => updatePersonRow(i, 'prenom', e.target.value)} />
+                  <div className="label-sm">Serveur</div>
+                  {p.isNew ? (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input
+                        className="input-field"
+                        placeholder="Nouveau nom..."
+                        value={p.nom}
+                        autoFocus
+                        onChange={(e) => {
+                          const updated = [...personRows];
+                          updated[i] = { ...updated[i], nom: e.target.value, key: slugify(e.target.value) };
+                          setPersonRows(updated);
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 6, padding: '0 6px', cursor: 'pointer', fontSize: 12, color: '#6b7280' }}
+                        onClick={() => { const u = [...personRows]; u[i] = { ...u[i], isNew: false, nom: '', key: '' }; setPersonRows(u); }}
+                        title="Annuler"
+                      >◀</button>
+                    </div>
+                  ) : (
+                    <select
+                      className="input-field"
+                      value={p.key}
+                      onChange={(e) => {
+                        if (e.target.value === '__nouveau__') {
+                          const u = [...personRows]; u[i] = { ...u[i], isNew: true, key: '', nom: '' }; setPersonRows(u);
+                        } else {
+                          const found = serverOptions.find((s) => s.key === e.target.value);
+                          const u = [...personRows]; u[i] = { ...u[i], key: e.target.value, nom: found?.nom || '' }; setPersonRows(u);
+                        }
+                      }}
+                    >
+                      <option value="">— Choisir —</option>
+                      {serverOptions.map((s) => (
+                        <option key={s.key} value={s.key}>{s.nom}</option>
+                      ))}
+                      <option value="__nouveau__">+ Nouveau serveur...</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <div className="label-sm">Date</div>
@@ -168,17 +377,30 @@ export default function Calculator() {
                 <div>
                   <div className="label-sm">Valeur</div>
                   <input className="input-field" type="number" placeholder="0" value={p.valeur}
-                    onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)} />
+                    onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveFiche(i)} />
                 </div>
-                <div>
-                  <button className="btn btn-primary" style={{ padding: '8px 6px', width: '100%' }} onClick={() => handleSaveFiche(i)} title="Sauvegarder">💾</button>
-                </div>
+                <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveFiche(i)} title="Sauvegarder">💾</button>
+                <button className="btn btn-danger" style={{ padding: '8px 4px', fontSize: 12 }} onClick={() => removePersonRow(i)} title="Supprimer">✕</button>
               </div>
               <div style={{ marginTop: 6, textAlign: 'right', fontSize: 13, color: '#6b7280' }}>
+                {p.nom && <strong style={{ color: '#374151', marginRight: 6 }}>{p.nom}</strong>}
                 {fmt(parseFloat(p.valeur) || 0)} × H({fmt(H)}) = <strong>{fmt(personneResults[i])}</strong>
               </div>
+              {rowMsgs[i] && (
+                <div style={{ marginTop: 4, textAlign: 'right', fontSize: 12, color: '#065f46', background: '#d1fae5', borderRadius: 6, padding: '3px 10px' }}>
+                  {rowMsgs[i]}
+                </div>
+              )}
+              {lastSavedRow[i] && (
+                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 10px' }}>
+                  <span style={{ flex: 1, color: '#15803d' }}>✓ {lastSavedRow[i].label}</span>
+                  <button onClick={() => handleUndoRow(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
+                </div>
+              )}
             </div>
           ))}
+          <button className="btn btn-secondary" onClick={addPersonRow} style={{ marginBottom: 12 }}>+ Ajouter une personne</button>
           <div className="blue-total">TOTAL PERSONNES : {fmt(totalPersonnes)} €</div>
         </div>
 
@@ -195,8 +417,13 @@ export default function Calculator() {
                 </div>
                 <div>
                   <div className="label-sm">Montant</div>
-                  <input className="input-field" type="number" placeholder="±0" value={line.montant}
-                    onChange={(e) => updateNote(i, 'montant', e.target.value)} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>−</span>
+                    <input className="input-field" type="number" placeholder="0" value={line.montant}
+                      onChange={(e) => updateNote(i, 'montant', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveNote(i)}
+                      style={{ flex: 1 }} />
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 36px', gap: 8, alignItems: 'end' }}>
@@ -216,23 +443,87 @@ export default function Calculator() {
                 </div>
                 <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveNote(i)} title="Sauvegarder">💾</button>
               </div>
+              {lastSavedNote[i] && (
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 10px' }}>
+                  <span style={{ flex: 1, color: '#15803d' }}>✓ {lastSavedNote[i].label}</span>
+                  <button onClick={() => handleUndoNote(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
+                </div>
+              )}
             </div>
           ))}
           <button className="btn btn-secondary" onClick={addNoteLine} style={{ marginBottom: 14 }}>+ Ajouter une ligne</button>
 
-          {lastNote && (
+          {sessionNotes.length > 0 && (
             <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginBottom: 14 }}>
               <div className="label-sm" style={{ marginBottom: 6 }}>NOTES ENREGISTRÉES (SESSION)</div>
-              <div className="nota-row">
-                <span style={{ flex: 1 }}>
-                  {lastNote.personne} → {lastNote.destinataire_nom} ({lastNote.date ? lastNote.date.substring(5, 7) + '/' + lastNote.date.substring(2, 4) : ''})
-                </span>
-                <span style={{ color: lastNote.montant < 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
-                  {fmt(lastNote.montant)} €
-                </span>
-              </div>
+              {sessionNotes.map((n) => (
+                <div key={n.id} className="nota-row">
+                  <span style={{ flex: 1 }}>
+                    {n.personne} → {n.destinataire_nom} ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
+                  </span>
+                  <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                    {fmt(n.montant)} €
+                  </span>
+                </div>
+              ))}
             </div>
           )}
+
+          <div className="section-divider" />
+
+          {/* Remboursement note */}
+          <div className="card-title" style={{ marginBottom: 8, color: '#dc2626', fontSize: 12 }}>REMBOURSEMENT NOTE</div>
+          {rembLines.map((line, i) => (
+            <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < rembLines.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 36px', gap: 8, alignItems: 'end' }}>
+                <div style={{ position: 'relative' }}>
+                  <div className="label-sm">Note à rembourser</div>
+                  <input
+                    className="input-field"
+                    placeholder="Chercher par nom..."
+                    value={line.search}
+                    onChange={(e) => handleRembSearch(i, e.target.value)}
+                    onFocus={() => handleRembFocus(i)}
+                    onBlur={() => setTimeout(() => closeRembDropdown(i), 150)}
+                    autoComplete="off"
+                  />
+                  {line.showDropdown && getActiveNotesSuggestions(line.search).length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
+                      {getActiveNotesSuggestions(line.search).slice(0, 8).map((note) => (
+                        <div key={note.id} onMouseDown={() => handleRembSelect(i, note)}
+                          style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>
+                            <strong>{note.personne}</strong>
+                            <span style={{ color: '#6b7280', margin: '0 4px' }}>→</span>
+                            {note.destinataire_nom}
+                            <span style={{ color: '#9ca3af', fontSize: 11, marginLeft: 6 }}>
+                              {note.date ? note.date.substring(8, 10) + '/' + note.date.substring(5, 7) : ''}
+                            </span>
+                          </span>
+                          <span style={{ fontWeight: 700, color: note.montant >= 0 ? '#16a34a' : '#dc2626', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                            {fmt(note.montant)} €
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="label-sm">Date</div>
+                  <input className="input-field" type="date" value={line.date} onChange={(e) => updateRembLine(i, 'date', e.target.value)} />
+                </div>
+                <button className="btn btn-primary" style={{ padding: '8px 6px', background: line.selectedNote ? '#dc2626' : undefined, opacity: line.selectedNote ? 1 : 0.5 }}
+                  onClick={() => handleSaveRemb(i)} title="Confirmer remboursement">💾</button>
+              </div>
+              {line.selectedNote && (
+                <div style={{ marginTop: 5, fontSize: 11, padding: '4px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{line.selectedNote.personne} → {line.selectedNote.destinataire_nom}</span>
+                  <strong>{fmt(line.selectedNote.montant)} € → sera annulée</strong>
+                </div>
+              )}
+            </div>
+          ))}
+          <button className="btn btn-secondary" onClick={addRembLine} style={{ marginBottom: 14, fontSize: 12 }}>+ Remboursement</button>
 
           <div className="section-divider" />
 
@@ -259,6 +550,138 @@ export default function Calculator() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* BOP */}
+      <div className="card">
+        <div className="card-title">BOP</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Serveur</div>
+            <select className="input-field" value={bopForm.serveur_key} onChange={(e) => setBopForm({ ...bopForm, serveur_key: e.target.value })}>
+              <option value="">— Choisir —</option>
+              {serverOptions.map((s) => (
+                <option key={s.key} value={s.key}>{s.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="label-sm">Montant</div>
+            <input className="input-field" type="number" placeholder="0" value={bopForm.montant}
+              onChange={(e) => setBopForm({ ...bopForm, montant: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveBop()} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={bopForm.date}
+              onChange={(e) => setBopForm({ ...bopForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveBop} title="Sauvegarder">💾</button>
+        </div>
+        {sessionBops.length > 0 && (
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionBops.map((b) => (
+              <div key={b.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
+                <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* BOP Anciens Serveurs */}
+      <div className="card">
+        <div className="card-title">BOP — Anciens Serveurs</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Serveur</div>
+            <select className="input-field" value={ancienBopForm.serveur_key} onChange={(e) => setAncienBopForm({ ...ancienBopForm, serveur_key: e.target.value })}>
+              <option value="">— Choisir —</option>
+              {ancienServeursList.map((s) => (
+                <option key={s.key} value={s.key}>{s.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="label-sm">Montant</div>
+            <input className="input-field" type="number" placeholder="0" value={ancienBopForm.montant}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, montant: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveAncienBop()} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={ancienBopForm.date}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveAncienBop} title="Sauvegarder">💾</button>
+        </div>
+        {sessionAncienBops.length > 0 && (
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionAncienBops.map((b) => (
+              <div key={b.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
+                <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Emprunt / Prêt */}
+      <div className="card">
+        <div className="card-title">Emprunt / Prêt</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {['emprunt', 'pret'].map((t) => (
+            <button
+              key={t}
+              className={pretForm.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
+              style={{ fontSize: 13, padding: '6px 16px' }}
+              onClick={() => setPretForm({ ...pretForm, type: t })}
+            >
+              {t === 'emprunt' ? 'Emprunt' : 'Prêt'}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Produit</div>
+            <input className="input-field" placeholder="Nom de l'objet" value={pretForm.produit}
+              onChange={(e) => setPretForm({ ...pretForm, produit: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Nombre</div>
+            <input className="input-field" type="number" min="1" value={pretForm.nombre}
+              onChange={(e) => setPretForm({ ...pretForm, nombre: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Lieu / Personne</div>
+            <input className="input-field" placeholder="Où / Qui" value={pretForm.lieu}
+              onChange={(e) => setPretForm({ ...pretForm, lieu: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={pretForm.date}
+              onChange={(e) => setPretForm({ ...pretForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSavePret} title="Sauvegarder">💾</button>
+        </div>
+
+        {sessionPrets.length > 0 && (
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionPrets.map((p) => (
+              <div key={p.id} className="nota-row">
+                <span style={{ fontSize: 12, color: p.type === 'emprunt' ? '#dc2626' : '#16a34a', fontWeight: 600, marginRight: 8 }}>
+                  {p.type === 'emprunt' ? 'EMPRUNT' : 'PRÊT'}
+                </span>
+                <span style={{ flex: 1, fontSize: 13 }}>{p.produit} {p.nombre > 1 ? `× ${p.nombre}` : ''} — {p.lieu}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
