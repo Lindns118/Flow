@@ -592,45 +592,43 @@ export default function Calculator() {
       </div>
 
       {/* BOP Anciens Serveurs */}
-      {ancienServeursList.length > 0 && (
-        <div className="card">
-          <div className="card-title">BOP — Anciens Serveurs</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
-            <div>
-              <div className="label-sm">Serveur</div>
-              <select className="input-field" value={ancienBopForm.serveur_key} onChange={(e) => setAncienBopForm({ ...ancienBopForm, serveur_key: e.target.value })}>
-                <option value="">— Choisir —</option>
-                {ancienServeursList.map((s) => (
-                  <option key={s.key} value={s.key}>{s.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div className="label-sm">Montant</div>
-              <input className="input-field" type="number" placeholder="0" value={ancienBopForm.montant}
-                onChange={(e) => setAncienBopForm({ ...ancienBopForm, montant: e.target.value })}
-                onKeyDown={(e) => e.key === 'Enter' && handleSaveAncienBop()} />
-            </div>
-            <div>
-              <div className="label-sm">Date</div>
-              <input className="input-field" type="date" value={ancienBopForm.date}
-                onChange={(e) => setAncienBopForm({ ...ancienBopForm, date: e.target.value })} />
-            </div>
-            <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveAncienBop} title="Sauvegarder">💾</button>
-          </div>
-          {sessionAncienBops.length > 0 && (
-            <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
-              <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
-              {sessionAncienBops.map((b) => (
-                <div key={b.id} className="nota-row">
-                  <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
-                  <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
-                </div>
+      <div className="card">
+        <div className="card-title">BOP — Anciens Serveurs</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Serveur</div>
+            <select className="input-field" value={ancienBopForm.serveur_key} onChange={(e) => setAncienBopForm({ ...ancienBopForm, serveur_key: e.target.value })}>
+              <option value="">— Choisir —</option>
+              {ancienServeursList.map((s) => (
+                <option key={s.key} value={s.key}>{s.nom}</option>
               ))}
-            </div>
-          )}
+            </select>
+          </div>
+          <div>
+            <div className="label-sm">Montant</div>
+            <input className="input-field" type="number" placeholder="0" value={ancienBopForm.montant}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, montant: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveAncienBop()} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={ancienBopForm.date}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveAncienBop} title="Sauvegarder">💾</button>
         </div>
-      )}
+        {sessionAncienBops.length > 0 && (
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionAncienBops.map((b) => (
+              <div key={b.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
+                <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Emprunt / Prêt */}
       <div className="card">
