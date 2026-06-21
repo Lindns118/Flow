@@ -32,6 +32,8 @@ export default function Calculator() {
   const [rembLines, setRembLines] = useState([
     { search: '', showDropdown: false, selectedNote: null, date: today() },
   ]);
+  const [bopForm, setBopForm] = useState({ serveur_key: '', montant: '', date: today() });
+  const [sessionBops, setSessionBops] = useState([]);
 
   useEffect(() => {
     setPersonnesList(getPersonnes());
@@ -52,6 +54,18 @@ export default function Calculator() {
   const flashRowMsg = (i, msg) => {
     setRowMsgs((prev) => ({ ...prev, [i]: msg }));
     setTimeout(() => setRowMsgs((prev) => { const n = { ...prev }; delete n[i]; return n; }), 2500);
+  };
+
+  const handleSaveBop = () => {
+    if (!bopForm.serveur_key || !bopForm.montant) return;
+    const server = serverOptions.find((s) => s.key === bopForm.serveur_key);
+    if (!server) return;
+    const montant = parseFloat(bopForm.montant);
+    if (!montant) return;
+    addFiche(server.key, server.nom, bopForm.date, montant, 'bop');
+    setSessionBops((prev) => [{ ...bopForm, nom: server.nom, id: Date.now() }, ...prev]);
+    flashMsg('✓ BOP enregistré');
+    setBopForm({ serveur_key: bopForm.serveur_key, montant: '', date: today() });
   };
 
   const handleSavePret = () => {
@@ -520,6 +534,45 @@ export default function Calculator() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* BOP */}
+      <div className="card">
+        <div className="card-title">BOP</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Serveur</div>
+            <select className="input-field" value={bopForm.serveur_key} onChange={(e) => setBopForm({ ...bopForm, serveur_key: e.target.value })}>
+              <option value="">— Choisir —</option>
+              {serverOptions.map((s) => (
+                <option key={s.key} value={s.key}>{s.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="label-sm">Montant</div>
+            <input className="input-field" type="number" placeholder="0" value={bopForm.montant}
+              onChange={(e) => setBopForm({ ...bopForm, montant: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveBop()} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={bopForm.date}
+              onChange={(e) => setBopForm({ ...bopForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveBop} title="Sauvegarder">💾</button>
+        </div>
+        {sessionBops.length > 0 && (
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionBops.map((b) => (
+              <div key={b.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
+                <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Emprunt / Prêt */}
