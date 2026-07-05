@@ -108,11 +108,11 @@ export default function Pierre() {
 
   const handleValiderMois = () => {
     const reports = getPierreMonthReports();
-    reports[nextMonth(selectedMois)] = totalGeneral;
+    reports[nextMonth(selectedMois)] = totalGeneral < 0 ? totalGeneral : 0;
     savePierreMonthReports(reports);
     setConfirmValider(false);
     load();
-    flash(`✓ ${fmtMois(selectedMois)} validé — Report : ${fmt(totalGeneral)} €`);
+    flash(`✓ ${fmtMois(selectedMois)} validé — Report : ${totalGeneral < 0 ? fmt(totalGeneral) : '0,00'} €`);
   };
 
   const handleSaveFiche = () => {
@@ -483,8 +483,10 @@ ${bkSection}
           <div className="modal-box">
             <h3>Valider {fmtMois(selectedMois)}</h3>
             <p>
-              Le total de ce mois (<strong>{fmt(totalGeneral)} €</strong>) sera reporté comme solde de départ pour <strong>{fmtMois(nextMonth(selectedMois))}</strong>.
-              {totalGeneral < 0 && ' La dette sera portée au mois suivant.'}
+              {totalGeneral >= 0
+                ? <>Le solde est positif (<strong>{fmt(totalGeneral)} €</strong>). Le mois suivant (<strong>{fmtMois(nextMonth(selectedMois))}</strong>) commencera à <strong>0,00 €</strong>.</>
+                : <>La dette (<strong>{fmt(totalGeneral)} €</strong>) sera reportée comme solde de départ pour <strong>{fmtMois(nextMonth(selectedMois))}</strong>.</>
+              }
             </p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmValider(false)}>Annuler</button>
