@@ -513,8 +513,8 @@ ${bkSection}
         </div>
       )}
 
-      {reportDuMoisPrecedent < 0 && (
-        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626' }}>
+      {reportDuMoisPrecedent !== 0 && (
+        <div style={{ background: reportDuMoisPrecedent < 0 ? '#fef2f2' : '#f0fdf4', color: reportDuMoisPrecedent < 0 ? '#dc2626' : '#15803d', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: `4px solid ${reportDuMoisPrecedent < 0 ? '#dc2626' : '#16a34a'}` }}>
           Report période précédente : {fmt(reportDuMoisPrecedent)} €
         </div>
       )}
