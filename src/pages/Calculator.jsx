@@ -153,10 +153,11 @@ export default function Calculator() {
   const getActiveNotesSuggestions = (search) => {
     const activeNotes = allNotes.filter((n) => !n.annulee && !n.rembourse);
     if (!search.trim()) return activeNotes.slice(-6).reverse();
-    const q = search.toLowerCase();
-    return activeNotes.filter(
-      (n) => n.personne?.toLowerCase().includes(q) || n.destinataire_nom?.toLowerCase().includes(q)
-    );
+    const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+    return activeNotes.filter((n) => {
+      const hay = `${n.personne || ''} ${n.destinataire_nom || ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
   };
 
   const handleRembSearch = (i, value) => {
