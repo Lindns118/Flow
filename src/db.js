@@ -25,6 +25,7 @@ export function getAllData() {
     ancienServeurs: getAncienServeurs(),
     ancienServeurEntries: getAncienServeurEntries(),
     pierreMonthReports: getPierreMonthReports(),
+    resetAt: Number(localStorage.getItem('resetAt') || 0),
   };
 }
 
@@ -46,18 +47,28 @@ function mergeByKey(local, remote) {
 }
 
 export function setAllData(data) {
+  const localResetAt = Number(localStorage.getItem('resetAt') || 0);
+  const driveResetAt = Number(data?.resetAt || 0);
+  // If Drive was reset more recently than local, take Drive arrays as-is (don't merge old local data back)
+  const driveIsNewer = driveResetAt > localResetAt;
+
   if (data?.personnes !== undefined) {
     localStorage.setItem('personnes', JSON.stringify(mergeByKey(getPersonnes(), data.personnes)));
   }
-  // Arrays: merge by id so local entries not yet synced to Drive are preserved
   if (data?.fiches !== undefined) {
-    localStorage.setItem('fiches', JSON.stringify(mergeById(getFiches(), data.fiches)));
+    localStorage.setItem('fiches', JSON.stringify(
+      driveIsNewer ? (data.fiches || []) : mergeById(getFiches(), data.fiches)
+    ));
   }
   if (data?.notes !== undefined) {
-    localStorage.setItem('notes', JSON.stringify(mergeById(getNotes(), data.notes)));
+    localStorage.setItem('notes', JSON.stringify(
+      driveIsNewer ? (data.notes || []) : mergeById(getNotes(), data.notes)
+    ));
   }
   if (data?.fichesPierre !== undefined) {
-    localStorage.setItem('fichesPierre', JSON.stringify(mergeById(getFichesPierre(), data.fichesPierre)));
+    localStorage.setItem('fichesPierre', JSON.stringify(
+      driveIsNewer ? (data.fichesPierre || []) : mergeById(getFichesPierre(), data.fichesPierre)
+    ));
   }
   if (data?.prets !== undefined) {
     localStorage.setItem('prets', JSON.stringify(mergeById(getPrets(), data.prets)));
@@ -68,19 +79,27 @@ export function setAllData(data) {
   if (data?.ancienServeurs !== undefined) {
     localStorage.setItem('ancienServeurs', JSON.stringify(mergeByKey(getAncienServeurs(), data.ancienServeurs)));
   }
-  // Objects: local takes priority (more recent resets/modifications)
   if (data?.dettes !== undefined) {
-    localStorage.setItem('dettes', JSON.stringify({ ...data.dettes, ...getDettes() }));
+    localStorage.setItem('dettes', JSON.stringify(
+      driveIsNewer ? (data.dettes || {}) : { ...data.dettes, ...getDettes() }
+    ));
   }
   if (data?.bopGlobaux !== undefined) {
-    localStorage.setItem('bopGlobaux', JSON.stringify({ ...data.bopGlobaux, ...getBopGlobaux() }));
+    localStorage.setItem('bopGlobaux', JSON.stringify(
+      driveIsNewer ? (data.bopGlobaux || {}) : { ...data.bopGlobaux, ...getBopGlobaux() }
+    ));
   }
-  // hiddenNotes: union of both (a hidden note stays hidden)
+  // hiddenNotes: toujours union (une note cachée reste cachée)
   if (data?.hiddenNotes !== undefined) {
     localStorage.setItem('hiddenNotes', JSON.stringify([...new Set([...getHiddenNotes(), ...data.hiddenNotes])]));
   }
   if (data?.pierreMonthReports !== undefined) {
-    localStorage.setItem('pierreMonthReports', JSON.stringify({ ...data.pierreMonthReports, ...getPierreMonthReports() }));
+    localStorage.setItem('pierreMonthReports', JSON.stringify(
+      driveIsNewer ? (data.pierreMonthReports || {}) : { ...data.pierreMonthReports, ...getPierreMonthReports() }
+    ));
+  }
+  if (driveIsNewer) {
+    localStorage.setItem('resetAt', String(driveResetAt));
   }
   reconcilePersonnes();
   reconcileRemboursements();
@@ -299,6 +318,7 @@ export function resetServeur(key) {
   const hiddenSet = new Set(getHiddenNotes());
   notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
+  localStorage.setItem('resetAt', String(Date.now()));
   scheduleDriveSync();
 }
 
@@ -346,6 +366,7 @@ export function resetPierre() {
   const hiddenSet = new Set(getHiddenNotes());
   notes.filter((n) => n.destinataire_key === 'pierre').forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
+  localStorage.setItem('resetAt', String(Date.now()));
   scheduleDriveSync();
 }
 
