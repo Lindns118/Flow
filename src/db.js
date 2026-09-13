@@ -45,57 +45,31 @@ export function getAllData() {
 }
 
 export function setAllData(data) {
-  const localResetAt = Number(localStorage.getItem('resetAt') || 0);
-  const driveResetAt = Number(data?.resetAt || 0);
-  // If Drive was reset more recently, take its arrays directly; otherwise merge to preserve local-only entries
-  const driveIsNewer = driveResetAt > localResetAt;
-
   if (data?.personnes !== undefined) {
+    // Merge: never drop a server that exists locally but not in Drive
     const local = getPersonnes();
     const driveKeys = new Set(data.personnes.map((p) => p.key));
     const merged = [...data.personnes];
     local.forEach((p) => { if (!driveKeys.has(p.key)) merged.push(p); });
     localStorage.setItem('personnes', JSON.stringify(merged));
   }
-  if (data?.fiches !== undefined) {
-    const val = driveIsNewer ? data.fiches : mergeById(getFiches(), data.fiches);
-    localStorage.setItem('fiches', JSON.stringify(val));
-  }
-  if (data?.notes !== undefined) {
-    const val = driveIsNewer ? data.notes : mergeById(getNotes(), data.notes);
-    localStorage.setItem('notes', JSON.stringify(val));
-  }
-  // hiddenNotes: always union (a hidden note stays hidden on all devices)
+  if (data?.fiches !== undefined) localStorage.setItem('fiches', JSON.stringify(data.fiches));
+  if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
+  // hiddenNotes: union — a hidden note stays hidden on all devices
   if (data?.hiddenNotes !== undefined) {
     const merged = [...new Set([...getHiddenNotes(), ...data.hiddenNotes])];
     localStorage.setItem('hiddenNotes', JSON.stringify(merged));
   }
-  if (data?.fichesPierre !== undefined) {
-    const val = driveIsNewer ? data.fichesPierre : mergeById(getFichesPierre(), data.fichesPierre);
-    localStorage.setItem('fichesPierre', JSON.stringify(val));
-  }
-  if (data?.prets !== undefined) {
-    localStorage.setItem('prets', JSON.stringify(mergeById(getPrets(), data.prets)));
-  }
-  if (data?.dettes !== undefined) {
-    const val = driveIsNewer ? data.dettes : { ...data.dettes, ...getDettes() };
-    localStorage.setItem('dettes', JSON.stringify(val));
-  }
-  if (data?.bopGlobaux !== undefined) {
-    const val = driveIsNewer ? data.bopGlobaux : { ...data.bopGlobaux, ...getBopGlobaux() };
-    localStorage.setItem('bopGlobaux', JSON.stringify(val));
-  }
+  if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
+  if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
+  if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
+  if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
   if (data?.ancienServeurs !== undefined) localStorage.setItem('ancienServeurs', JSON.stringify(data.ancienServeurs));
+  // ancienServeurEntries: merge so entries added on another device are not lost
   if (data?.ancienServeurEntries !== undefined) {
     localStorage.setItem('ancienServeurEntries', JSON.stringify(mergeById(getAncienServeurEntries(), data.ancienServeurEntries)));
   }
-  if (data?.pierreMonthReports !== undefined) {
-    const val = driveIsNewer ? data.pierreMonthReports : { ...data.pierreMonthReports, ...getPierreMonthReports() };
-    localStorage.setItem('pierreMonthReports', JSON.stringify(val));
-  }
-  if (driveIsNewer) {
-    localStorage.setItem('resetAt', String(driveResetAt));
-  }
+  if (data?.pierreMonthReports !== undefined) localStorage.setItem('pierreMonthReports', JSON.stringify(data.pierreMonthReports));
   reconcilePersonnes();
 }
 
