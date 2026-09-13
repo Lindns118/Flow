@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
-  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette
+  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette,
+  getPierreMonthReports, savePierreMonthReports,
 } from '../db';
 import jsPDF from 'jspdf';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
+const nextMonth = (mois) => {
+  if (!mois) return '';
+  const [y, m] = mois.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+};
+
 const fmtMois = (m) => {
   if (!m) return '';
   const [y, mo] = m.split('-');
@@ -32,8 +39,10 @@ export default function Pierre() {
   const [msg, setMsg] = useState('');
   const [confirmDeleteMois, setConfirmDeleteMois] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmValider, setConfirmValider] = useState(false);
   const [bkInput, setBkInput] = useState('');
   const [dette, setDette] = useState(0);
+  const [monthReports, setMonthReports] = useState({});
 
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
@@ -42,6 +51,7 @@ export default function Pierre() {
     setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id)));
     setPersonnesList(getPersonnes());
     setDette(getDette('pierre'));
+    setMonthReports(getPierreMonthReports());
     // Auto-select current month if nothing selected
     setSelectedMois((prev) => {
       if (prev) return prev;
@@ -76,6 +86,11 @@ export default function Pierre() {
   const moisList = Object.keys(moisMap).sort((a, b) => b.localeCompare(a));
 
   const fichesOfMois = selectedMois ? (moisMap[selectedMois]?.fiches || []) : [];
+  const bkOfMois = bkFiches.filter((f) => (f.mois || f.date?.substring(0, 7)) === selectedMois);
+  const notesOfMois = notesClients.filter((n) => n.date?.startsWith(selectedMois || ''));
+
+  // Report du mois précédent : si le mois a été validé, utiliser le report stocké ; sinon la dette du reset
+  const reportDuMoisPrecedent = selectedMois && selectedMois in monthReports ? monthReports[selectedMois] : dette;
 
   const handleSaveFiche = () => {
     if (!date) return;
@@ -150,10 +165,20 @@ export default function Pierre() {
     load();
   };
 
-  const totalFiches = fichesActives.reduce((a, b) => a + b.montant, 0);
-  const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
-  const totalNotes = notesClients.reduce((a, b) => a + b.montant, 0);
-  const totalGeneral = totalFiches + totalNotes - totalBk + dette;
+  const handleValiderMois = () => {
+    if (!selectedMois) return;
+    const reports = getPierreMonthReports();
+    reports[nextMonth(selectedMois)] = totalGeneral < 0 ? totalGeneral : 0;
+    savePierreMonthReports(reports);
+    setMonthReports({ ...reports });
+    setConfirmValider(false);
+    flash(`✓ ${fmtMois(selectedMois)} validé — Report : ${totalGeneral < 0 ? fmt(totalGeneral) : '0,00'} €`);
+  };
+
+  const totalFichesMois = fichesOfMois.reduce((a, b) => a + b.montant, 0);
+  const totalBkMois = bkOfMois.reduce((a, b) => a + b.montant, 0);
+  const totalNotesMois = notesOfMois.reduce((a, b) => a + b.montant, 0);
+  const totalGeneral = totalFichesMois + totalNotesMois - totalBkMois + reportDuMoisPrecedent;
 
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
@@ -162,16 +187,16 @@ export default function Pierre() {
 
     doc.setFontSize(14);
     doc.setFont(undefined, 'bold');
-    doc.text('Pierre', margin, 12);
+    doc.text(`Pierre${selectedMois ? ' — ' + fmtMois(selectedMois) : ''}`, margin, 12);
     doc.setFont(undefined, 'normal');
 
     let y = 20;
 
-    if (dette < 0) {
+    if (reportDuMoisPrecedent !== 0) {
       doc.setFontSize(10);
       doc.setFont(undefined, 'bold');
-      doc.setTextColor(220, 38, 38);
-      doc.text(`Report dette : ${fmt(dette)} €`, margin, y);
+      doc.setTextColor(reportDuMoisPrecedent < 0 ? 220 : 22, reportDuMoisPrecedent < 0 ? 38 : 163, reportDuMoisPrecedent < 0 ? 38 : 74);
+      doc.text(`Report mois précédent : ${fmt(reportDuMoisPrecedent)} €`, margin, y);
       doc.setTextColor(0, 0, 0);
       doc.setFont(undefined, 'normal');
       y += 8;
@@ -223,8 +248,8 @@ export default function Pierre() {
     let leftY = y + rowH;
     let rightY = y + rowH;
 
-    // Fiches rows (salaire/retrait only, sorted by date desc)
-    [...fichesActives].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
+    // Fiches rows (salaire/retrait only, sorted by date desc, month-specific)
+    [...fichesOfMois].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
       drawRow(leftX, leftCols, leftY, [
         fmtDate(f.date),
         f.type === 'retrait' ? 'Retrait' : 'Salaire',
@@ -234,25 +259,25 @@ export default function Pierre() {
       leftY += rowH;
     });
     // Fiches total
-    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFiches) + ' €'], true);
+    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFichesMois) + ' €'], true);
     leftY += rowH;
 
-    // Notes clients rows
-    notesClients.forEach((n) => {
+    // Notes clients rows (month-specific)
+    notesOfMois.forEach((n) => {
       drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
       rightY += rowH;
     });
     // Notes total
-    if (notesClients.length > 0) {
-      drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotes) + ' €'], true);
+    if (notesOfMois.length > 0) {
+      drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotesMois) + ' €'], true);
       rightY += rowH;
     }
 
     y = Math.max(leftY, rightY) + 8;
 
-    // BK section
+    // BK section (month-specific)
     const bkSectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
-    if (bkFiches.length > 0) {
+    if (bkOfMois.length > 0) {
       doc.setFontSize(8.5);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(234, 88, 12);
@@ -261,11 +286,11 @@ export default function Pierre() {
       doc.setTextColor(0, 0, 0);
       drawRow(margin, bkSectionCols, y, bkSectionCols.map((c) => c.header), true);
       y += rowH;
-      bkFiches.forEach((f) => {
+      bkOfMois.forEach((f) => {
         drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']);
         y += rowH;
       });
-      drawRow(margin, bkSectionCols, y, ['Total BK', fmt(totalBk) + ' €'], true);
+      drawRow(margin, bkSectionCols, y, ['Total BK', fmt(totalBkMois) + ' €'], true);
       y += rowH + 8;
     }
 
@@ -276,12 +301,12 @@ export default function Pierre() {
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalFiches)} (fiches) + ${fmt(totalNotes)} (notes) − ${fmt(totalBk)} (BK)`;
-    if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
+    let formula = `${fmt(totalFichesMois)} (fiches) + ${fmt(totalNotesMois)} (notes) − ${fmt(totalBkMois)} (BK)`;
+    if (reportDuMoisPrecedent !== 0) formula += ` + ${fmt(reportDuMoisPrecedent)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
 
-    doc.save('pierre-fiches.pdf');
+    doc.save(`pierre-${selectedMois || 'fiches'}.pdf`);
   };
 
   return (
@@ -294,6 +319,24 @@ export default function Pierre() {
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmReset(false)}>Annuler</button>
               <button className="btn btn-danger" onClick={handleReset}>Réinitialiser</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmValider && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Valider {fmtMois(selectedMois)}</h3>
+            <p>
+              Total du mois : <strong>{fmt(totalGeneral)} €</strong>.{' '}
+              {totalGeneral < 0
+                ? `Une dette de ${fmt(totalGeneral)} € sera reportée au mois suivant.`
+                : 'Aucune dette à reporter.'}
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmValider(false)}>Annuler</button>
+              <button className="btn btn-primary" onClick={handleValiderMois}>Valider</button>
             </div>
           </div>
         </div>
@@ -318,15 +361,21 @@ export default function Pierre() {
         </div>
       )}
 
-      {dette < 0 && (
-        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: '4px solid #dc2626' }}>
-          Report période précédente : {fmt(dette)} €
+      {reportDuMoisPrecedent !== 0 && (
+        <div style={{
+          background: reportDuMoisPrecedent < 0 ? '#fef2f2' : '#f0fdf4',
+          color: reportDuMoisPrecedent < 0 ? '#dc2626' : '#16a34a',
+          padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600,
+          borderLeft: reportDuMoisPrecedent < 0 ? '4px solid #dc2626' : '4px solid #16a34a',
+        }}>
+          Report mois précédent : {fmt(reportDuMoisPrecedent)} €
         </div>
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Pierre</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          {selectedMois && <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmValider(true)}>Valider le mois</button>}
           <button className="btn btn-danger" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
           <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={exportPDF}>Export PDF</button>
         </div>
@@ -459,9 +508,9 @@ export default function Pierre() {
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>{heures}h × 10 = <strong>{fmt(parseFloat(heures) * 10)} €</strong></div>
           )}
           <button className="btn btn-primary" onClick={handleSaveFiche} style={{ width: '100%' }}>Enregistrer</button>
-          {fichesActives.length > 0 && (
+          {fichesOfMois.length > 0 && (
             <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
-              Total fiches : {fmt(totalFiches)} €
+              Total {fmtMois(selectedMois)} : {fmt(totalFichesMois)} €
             </div>
           )}
         </div>
@@ -500,9 +549,9 @@ export default function Pierre() {
 
           <div className="card">
             <div className="card-title">Notes clients reçues</div>
-            <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotes)} €</div>
-            {notesClients.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>}
-            {notesClients.map((n) => (
+            <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotesMois)} €</div>
+            {notesOfMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>}
+            {notesOfMois.map((n) => (
               <div key={n.id} className="nota-row">
                 <span style={{ flex: 1, fontSize: 13 }}>
                   {n.personne} → Pierre ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
@@ -517,8 +566,8 @@ export default function Pierre() {
       {/* BK */}
       <div className="card" style={{ borderLeft: '4px solid #ea580c' }}>
         <div className="card-title" style={{ color: '#ea580c' }}>Pour BK</div>
-        {bkFiches.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée</div>}
-        {bkFiches.map((f) => (
+        {bkOfMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée ce mois</div>}
+        {bkOfMois.map((f) => (
           <div key={f.id} className="row-hover nota-row">
             <span style={{ flex: 1, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
             <span style={{ fontWeight: 600, color: '#ea580c' }}>{fmt(f.montant)} €</span>
@@ -538,16 +587,16 @@ export default function Pierre() {
           <button className="btn" style={{ background: '#ea580c', color: 'white' }} onClick={handleAddBk}>+</button>
         </div>
         <div style={{ marginTop: 10, fontWeight: 700, color: '#ea580c' }}>
-          Total BK : {fmt(totalBk)} €
+          Total BK : {fmt(totalBkMois)} €
         </div>
       </div>
 
       {/* Total Général */}
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
-        Total Général : {fmt(totalGeneral)} €
+        Total Général{selectedMois ? ` ${fmtMois(selectedMois)}` : ''} : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalFiches)} (fiches) + {fmt(totalNotes)} (notes) − {fmt(totalBk)} (BK)
-          {dette !== 0 && ` + ${fmt(dette)} (report)`}
+          {fmt(totalFichesMois)} (fiches) + {fmt(totalNotesMois)} (notes) − {fmt(totalBkMois)} (BK)
+          {reportDuMoisPrecedent !== 0 && ` + ${fmt(reportDuMoisPrecedent)} (report)`}
         </div>
       </div>
     </div>
