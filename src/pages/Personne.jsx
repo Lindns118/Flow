@@ -58,8 +58,8 @@ export default function Personne() {
   const notesRecuesAll = notes.filter((n) => n.destinataire_key === key);
 
   const totalSalaires = salaires.reduce((a, b) => a + b.montant, 0);
-  // Exclude notes that have a rembFiche (Cas 2) — their credit is already counted in totalRemb
-  const totalNotes = notesRecues.filter((n) => !n.annulee && !rembNoteIds.has(n.id)).reduce((a, b) => a + b.montant, 0);
+  // Exclude annulée, reimbursed, and Cas2 notes — their credit is counted in totalRemb
+  const totalNotes = notesRecues.filter((n) => !n.annulee && !n.rembourse && !rembNoteIds.has(n.id)).reduce((a, b) => a + b.montant, 0);
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
@@ -541,11 +541,11 @@ ${bopGlobal !== 0 ? `<p class="bop-global">BOP total : ${fmt(bopGlobal)} €</p>
             {showAnnulees ? 'Masquer annulées' : 'Voir annulées'}
           </button>
         </div>
-        {notesRecues.filter((n) => !rembNoteIds.has(n.id) && ((n.rembourse && !n.etaitCacheeAvantRembourse) || (!n.rembourse && (!n.annulee || showAnnulees)))).length === 0 && (
+        {notesRecues.filter((n) => !rembNoteIds.has(n.id) && (n.rembourse || (!n.annulee || showAnnulees))).length === 0 && (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>
         )}
-        {notesRecues.filter((n) => !rembNoteIds.has(n.id) && ((n.rembourse && !n.etaitCacheeAvantRembourse) || (!n.rembourse && (!n.annulee || showAnnulees)))).map((n) => {
-          const isCase1 = n.rembourse && !n.etaitCacheeAvantRembourse;
+        {notesRecues.filter((n) => !rembNoteIds.has(n.id) && (n.rembourse || (!n.annulee || showAnnulees))).map((n) => {
+          const isCase1 = n.rembourse;
           return (
             <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee && !isCase1 ? 0.5 : 1 }}>
               <span style={{ flex: 1, fontSize: 13, textDecoration: isCase1 ? 'line-through' : 'none', color: isCase1 ? '#6b7280' : 'inherit' }}>
