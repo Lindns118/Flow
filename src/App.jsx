@@ -148,6 +148,24 @@ function Navbar({ onLogout, onImportHistorique, onManualExport }) {
           <img src={user.picture} alt="profil" style={{ width: 28, height: 28, borderRadius: '50%' }} />
         )}
         <button
+          onClick={async () => {
+            try {
+              await onManualExport();
+              setSaveMsg('✓');
+            } catch {
+              setSaveMsg('✗');
+            }
+            setTimeout(() => setSaveMsg(''), 2000);
+          }}
+          title="Sauvegarder maintenant"
+          style={{
+            background: 'none', border: 'none', color: saveMsg === '✗' ? '#ef4444' : saveMsg === '✓' ? '#10b981' : 'rgba(255,255,255,0.7)',
+            cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1,
+          }}
+        >
+          {saveMsg || '💾'}
+        </button>
+        <button
           onClick={onLogout}
           style={{
             background: 'none', border: '1px solid rgba(255,255,255,0.3)',
