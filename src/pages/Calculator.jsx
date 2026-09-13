@@ -112,7 +112,7 @@ export default function Calculator() {
     const dest = line.destinataire === 'pierre'
       ? { key: 'pierre', nom: 'Pierre' }
       : personnesList.find((p) => p.key === line.destinataire) || { key: line.destinataire, nom: line.destinataire };
-    const montant = parseFloat(line.montant);
+    const montant = -Math.abs(parseFloat(line.montant));
     const note = addNote({
       personne: line.personne,
       montant,
@@ -388,9 +388,11 @@ export default function Calculator() {
                     onChange={(e) => updateNote(i, 'personne', e.target.value)} />
                 </div>
                 <div>
-                  <div className="label-sm">Montant</div>
+                  <div className="label-sm">Montant <span style={{ color: '#dc2626', fontWeight: 700 }}>−</span></div>
                   <input className="input-field" type="number" placeholder="0" value={line.montant}
-                    onChange={(e) => updateNote(i, 'montant', e.target.value)} />
+                    min="0"
+                    onChange={(e) => updateNote(i, 'montant', e.target.value)}
+                    style={{ color: '#dc2626' }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 36px', gap: 8, alignItems: 'end' }}>
