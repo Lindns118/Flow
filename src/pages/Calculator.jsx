@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret } from '../db';
+import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret, getAncienServeurs, addAncienServeurEntry } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,10 +30,16 @@ export default function Calculator() {
   const [rembLines, setRembLines] = useState([
     { search: '', showDropdown: false, selectedNote: null, date: today() },
   ]);
+  const [bopForm, setBopForm] = useState({ serveur_key: '', montant: '', date: today() });
+  const [sessionBops, setSessionBops] = useState([]);
+  const [ancienServeursList, setAncienServeursList] = useState([]);
+  const [ancienBopForm, setAncienBopForm] = useState({ serveur_key: '', montant: '', date: today() });
+  const [sessionAncienBops, setSessionAncienBops] = useState([]);
 
   useEffect(() => {
     setPersonnesList(getPersonnes());
     setAllNotes(getNotes());
+    setAncienServeursList(getAncienServeurs());
   }, []);
 
   const results = baseValues.map((v, i) => (parseFloat(v) || 0) * MULTIPLIERS[i]);
@@ -50,6 +56,30 @@ export default function Calculator() {
   const flashRowMsg = (i, msg) => {
     setRowMsgs((prev) => ({ ...prev, [i]: msg }));
     setTimeout(() => setRowMsgs((prev) => { const n = { ...prev }; delete n[i]; return n; }), 2500);
+  };
+
+  const handleSaveBop = () => {
+    if (!bopForm.serveur_key || !bopForm.montant) return;
+    const server = personnesList.find((s) => s.key === bopForm.serveur_key);
+    if (!server) return;
+    const montant = parseFloat(bopForm.montant);
+    if (!montant) return;
+    addFiche(server.key, server.nom, bopForm.date, montant, 'bop');
+    setSessionBops((prev) => [{ ...bopForm, nom: server.nom, id: Date.now() }, ...prev]);
+    flashMsg('✓ BOP enregistré');
+    setBopForm({ serveur_key: bopForm.serveur_key, montant: '', date: today() });
+  };
+
+  const handleSaveAncienBop = () => {
+    if (!ancienBopForm.serveur_key || !ancienBopForm.montant) return;
+    const server = ancienServeursList.find((s) => s.key === ancienBopForm.serveur_key);
+    if (!server) return;
+    const montant = parseFloat(ancienBopForm.montant);
+    if (!montant) return;
+    addAncienServeurEntry(server.key, montant, ancienBopForm.date);
+    setSessionAncienBops((prev) => [{ ...ancienBopForm, nom: server.nom, id: Date.now() }, ...prev]);
+    flashMsg('✓ BOP ancien serveur enregistré');
+    setAncienBopForm({ serveur_key: ancienBopForm.serveur_key, montant: '', date: today() });
   };
 
   const handleSavePret = () => {
@@ -481,6 +511,84 @@ export default function Calculator() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* BOP — Serveurs actifs */}
+      <div className="card">
+        <div className="card-title">BOP</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Serveur</div>
+            <select className="input-field" value={bopForm.serveur_key}
+              onChange={(e) => setBopForm({ ...bopForm, serveur_key: e.target.value })}>
+              <option value="">— choisir —</option>
+              {personnesList.filter((p) => p.key !== 'pierre').map((p) => (
+                <option key={p.key} value={p.key}>{p.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="label-sm">Montant (€)</div>
+            <input className="input-field" type="number" step="0.01" placeholder="0.00"
+              value={bopForm.montant} onChange={(e) => setBopForm({ ...bopForm, montant: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={bopForm.date}
+              onChange={(e) => setBopForm({ ...bopForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveBop} title="Sauvegarder">💾</button>
+        </div>
+        {sessionBops.length > 0 && (
+          <div style={{ background: '#f0fdf4', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionBops.map((b) => (
+              <div key={b.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.montant} €</span>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>{b.date}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* BOP — Anciens serveurs */}
+      <div className="card">
+        <div className="card-title">BOP — Anciens serveurs</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 130px 36px', gap: 8, alignItems: 'end' }}>
+          <div>
+            <div className="label-sm">Serveur</div>
+            <select className="input-field" value={ancienBopForm.serveur_key}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, serveur_key: e.target.value })}>
+              <option value="">— choisir —</option>
+              {ancienServeursList.map((s) => (
+                <option key={s.key} value={s.key}>{s.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="label-sm">Montant (€)</div>
+            <input className="input-field" type="number" step="0.01" placeholder="0.00"
+              value={ancienBopForm.montant} onChange={(e) => setAncienBopForm({ ...ancienBopForm, montant: e.target.value })} />
+          </div>
+          <div>
+            <div className="label-sm">Date</div>
+            <input className="input-field" type="date" value={ancienBopForm.date}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, date: e.target.value })} />
+          </div>
+          <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveAncienBop} title="Sauvegarder">💾</button>
+        </div>
+        {sessionAncienBops.length > 0 && (
+          <div style={{ background: '#f0fdf4', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+            <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
+            {sessionAncienBops.map((b) => (
+              <div key={b.id} className="nota-row">
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.montant} €</span>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>{b.date}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Emprunt / Prêt */}
