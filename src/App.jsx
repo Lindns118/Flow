@@ -149,6 +149,24 @@ function Navbar({ onLogout, onImportHistorique, onManualExport }) {
           <img src={user.picture} alt="profil" style={{ width: 28, height: 28, borderRadius: '50%' }} />
         )}
         <button
+          onClick={async () => {
+            try {
+              await onManualExport();
+              setSaveMsg('✓');
+            } catch {
+              setSaveMsg('✗');
+            }
+            setTimeout(() => setSaveMsg(''), 2000);
+          }}
+          title="Sauvegarder maintenant"
+          style={{
+            background: 'none', border: 'none', color: saveMsg === '✗' ? '#ef4444' : saveMsg === '✓' ? '#10b981' : 'rgba(255,255,255,0.7)',
+            cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1,
+          }}
+        >
+          {saveMsg || '💾'}
+        </button>
+        <button
           onClick={onLogout}
           style={{
             background: 'none', border: '1px solid rgba(255,255,255,0.3)',
@@ -250,6 +268,12 @@ function App() {
     await exportNotesToDrive(getAllData());
   };
 
+  const syncFromDrive = async () => {
+    let driveData = await loadDataFromDrive();
+    if (!driveData) driveData = await loadBackupFromDrive();
+    if (driveData) setAllData(driveData);
+  };
+
   const loadFromDrive = async () => {
     let driveData = await loadDataFromDrive();
     // Fallback: if primary (appDataFolder) is missing, try visible backup
@@ -273,6 +297,22 @@ function App() {
       }
     });
   }, []);
+
+  // Re-sync from Drive when tab comes back to foreground after 30s+ in background.
+  // Prevents stale local data from overwriting a reset done on another device.
+  useEffect(() => {
+    if (!signedIn || !dataLoaded) return;
+    let hiddenAt = 0;
+    const handleVisibility = async () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt && Date.now() - hiddenAt > 30_000) {
+        try { await syncFromDrive(); } catch { /* silent */ }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [signedIn, dataLoaded]);
 
   const handleLogin = async () => {
     await loadFromDrive();
