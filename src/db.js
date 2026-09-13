@@ -12,6 +12,21 @@ function scheduleDriveSync() {
   syncTimer = setTimeout(driveSyncCallback, 2000);
 }
 
+// Upload immediately — used after destructive operations like reset
+function forceDriveSync() {
+  if (!driveSyncCallback) return;
+  clearTimeout(syncTimer);
+  driveSyncCallback();
+}
+
+// Merge arrays by id: keep remote + local-only entries not yet in remote
+function mergeById(local, remote) {
+  if (!Array.isArray(remote) || !remote.length) return local || [];
+  if (!local?.length) return remote;
+  const remoteIds = new Set(remote.map((x) => x.id));
+  return [...remote, ...local.filter((x) => !remoteIds.has(x.id))];
+}
+
 export function getAllData() {
   return {
     personnes: getPersonnes(),
@@ -24,27 +39,63 @@ export function getAllData() {
     bopGlobaux: getBopGlobaux(),
     ancienServeurs: getAncienServeurs(),
     ancienServeurEntries: getAncienServeurEntries(),
+    pierreMonthReports: getPierreMonthReports(),
+    resetAt: Number(localStorage.getItem('resetAt') || 0),
   };
 }
 
 export function setAllData(data) {
+  const localResetAt = Number(localStorage.getItem('resetAt') || 0);
+  const driveResetAt = Number(data?.resetAt || 0);
+  // If Drive was reset more recently, take its arrays directly; otherwise merge to preserve local-only entries
+  const driveIsNewer = driveResetAt > localResetAt;
+
   if (data?.personnes !== undefined) {
-    // Merge Drive personnes with local — never silently drop a server
     const local = getPersonnes();
     const driveKeys = new Set(data.personnes.map((p) => p.key));
     const merged = [...data.personnes];
     local.forEach((p) => { if (!driveKeys.has(p.key)) merged.push(p); });
     localStorage.setItem('personnes', JSON.stringify(merged));
   }
-  if (data?.fiches !== undefined) localStorage.setItem('fiches', JSON.stringify(data.fiches));
-  if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
-  if (data?.hiddenNotes !== undefined) localStorage.setItem('hiddenNotes', JSON.stringify(data.hiddenNotes));
-  if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
-  if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
-  if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
-  if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
+  if (data?.fiches !== undefined) {
+    const val = driveIsNewer ? data.fiches : mergeById(getFiches(), data.fiches);
+    localStorage.setItem('fiches', JSON.stringify(val));
+  }
+  if (data?.notes !== undefined) {
+    const val = driveIsNewer ? data.notes : mergeById(getNotes(), data.notes);
+    localStorage.setItem('notes', JSON.stringify(val));
+  }
+  // hiddenNotes: always union (a hidden note stays hidden on all devices)
+  if (data?.hiddenNotes !== undefined) {
+    const merged = [...new Set([...getHiddenNotes(), ...data.hiddenNotes])];
+    localStorage.setItem('hiddenNotes', JSON.stringify(merged));
+  }
+  if (data?.fichesPierre !== undefined) {
+    const val = driveIsNewer ? data.fichesPierre : mergeById(getFichesPierre(), data.fichesPierre);
+    localStorage.setItem('fichesPierre', JSON.stringify(val));
+  }
+  if (data?.prets !== undefined) {
+    localStorage.setItem('prets', JSON.stringify(mergeById(getPrets(), data.prets)));
+  }
+  if (data?.dettes !== undefined) {
+    const val = driveIsNewer ? data.dettes : { ...data.dettes, ...getDettes() };
+    localStorage.setItem('dettes', JSON.stringify(val));
+  }
+  if (data?.bopGlobaux !== undefined) {
+    const val = driveIsNewer ? data.bopGlobaux : { ...data.bopGlobaux, ...getBopGlobaux() };
+    localStorage.setItem('bopGlobaux', JSON.stringify(val));
+  }
   if (data?.ancienServeurs !== undefined) localStorage.setItem('ancienServeurs', JSON.stringify(data.ancienServeurs));
-  if (data?.ancienServeurEntries !== undefined) localStorage.setItem('ancienServeurEntries', JSON.stringify(data.ancienServeurEntries));
+  if (data?.ancienServeurEntries !== undefined) {
+    localStorage.setItem('ancienServeurEntries', JSON.stringify(mergeById(getAncienServeurEntries(), data.ancienServeurEntries)));
+  }
+  if (data?.pierreMonthReports !== undefined) {
+    const val = driveIsNewer ? data.pierreMonthReports : { ...data.pierreMonthReports, ...getPierreMonthReports() };
+    localStorage.setItem('pierreMonthReports', JSON.stringify(val));
+  }
+  if (driveIsNewer) {
+    localStorage.setItem('resetAt', String(driveResetAt));
+  }
   reconcilePersonnes();
 }
 
@@ -237,13 +288,22 @@ export function resetServeur(key) {
   const hiddenSet = new Set(getHiddenNotes());
   notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
-  scheduleDriveSync();
+  localStorage.setItem('resetAt', String(Date.now()));
+  forceDriveSync();
 }
 
 export function resetAllServeurs() {
   getPersonnes()
     .filter((p) => p.key !== 'pierre')
     .forEach((p) => resetServeur(p.key));
+}
+
+export function getPierreMonthReports() {
+  try { return JSON.parse(localStorage.getItem('pierreMonthReports') || '{}'); } catch { return {}; }
+}
+export function savePierreMonthReports(r) {
+  localStorage.setItem('pierreMonthReports', JSON.stringify(r));
+  scheduleDriveSync();
 }
 
 // Reset Pierre: delete all his fichesPierre + hide his received notes
@@ -271,7 +331,8 @@ export function resetPierre() {
   const hiddenSet = new Set(getHiddenNotes());
   notes.filter((n) => n.destinataire_key === 'pierre').forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
-  scheduleDriveSync();
+  localStorage.setItem('resetAt', String(Date.now()));
+  forceDriveSync();
 }
 
 export function resetTous() {
