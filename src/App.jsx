@@ -247,6 +247,12 @@ function App() {
     await exportNotesToDrive(getAllData());
   };
 
+  const syncFromDrive = async () => {
+    let driveData = await loadDataFromDrive();
+    if (!driveData) driveData = await loadBackupFromDrive();
+    if (driveData) setAllData(driveData);
+  };
+
   const loadFromDrive = async () => {
     let driveData = await loadDataFromDrive();
     // Fallback: if primary (appDataFolder) is missing, try visible backup
@@ -270,6 +276,22 @@ function App() {
       }
     });
   }, []);
+
+  // Re-sync from Drive when tab comes back to foreground after 30s+ in background.
+  // Prevents stale local data from overwriting a reset done on another device.
+  useEffect(() => {
+    if (!signedIn || !dataLoaded) return;
+    let hiddenAt = 0;
+    const handleVisibility = async () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt && Date.now() - hiddenAt > 30_000) {
+        try { await syncFromDrive(); } catch { /* silent */ }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [signedIn, dataLoaded]);
 
   const handleLogin = async () => {
     await loadFromDrive();
