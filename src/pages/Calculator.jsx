@@ -129,7 +129,7 @@ export default function Calculator() {
   };
 
   const getActiveNotesSuggestions = (search) => {
-    const activeNotes = allNotes.filter((n) => !n.annulee);
+    const activeNotes = allNotes.filter((n) => !n.annulee && !n.rembourse);
     if (!search.trim()) return activeNotes.slice(-6).reverse();
     const words = search.toLowerCase().split(/\s+/).filter(Boolean);
     return activeNotes.filter((n) => {
@@ -476,12 +476,22 @@ export default function Calculator() {
                 <button className="btn btn-primary" style={{ padding: '8px 6px', background: line.selectedNote ? '#dc2626' : undefined, opacity: line.selectedNote ? 1 : 0.5 }}
                   onClick={() => handleSaveRemb(i)} title="Confirmer remboursement">💾</button>
               </div>
-              {line.selectedNote && (
-                <div style={{ marginTop: 5, fontSize: 11, padding: '4px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{line.selectedNote.personne} → {line.selectedNote.destinataire_nom}</span>
-                  <strong>{fmt(line.selectedNote.montant)} € → sera annulée</strong>
-                </div>
-              )}
+              {line.selectedNote && (() => {
+                const noteMonth = line.selectedNote.date?.substring(0, 7);
+                const rembMonth = line.date?.substring(0, 7);
+                const crossMonth = noteMonth && rembMonth && noteMonth !== rembMonth;
+                return (
+                  <div style={{ marginTop: 5, fontSize: 11, padding: '4px 8px', background: crossMonth ? '#fffbeb' : '#fef2f2', borderRadius: 6, color: crossMonth ? '#92400e' : '#991b1b', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{line.selectedNote.personne} → {line.selectedNote.destinataire_nom}</span>
+                    <strong>
+                      {fmt(line.selectedNote.montant)} € →{' '}
+                      {crossMonth
+                        ? `contre-note +${fmt(-line.selectedNote.montant)} € en ${rembMonth?.substring(5, 7)}/${rembMonth?.substring(2, 4)}`
+                        : 'sera annulée'}
+                    </strong>
+                  </div>
+                );
+              })()}
             </div>
           ))}
           <button className="btn btn-secondary" onClick={addRembLine} style={{ marginBottom: 14, fontSize: 12 }}>+ Remboursement</button>
