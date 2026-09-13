@@ -41,6 +41,7 @@ export default function Pierre() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmValider, setConfirmValider] = useState(false);
   const [bkInput, setBkInput] = useState('');
+  const [bkDate, setBkDate] = useState(today());
   const [dette, setDette] = useState(0);
   const [monthReports, setMonthReports] = useState({});
 
@@ -160,7 +161,7 @@ export default function Pierre() {
 
   const handleAddBk = () => {
     if (!bkInput) return;
-    addFichePierre({ date: new Date().toISOString().slice(0, 10), montantDirect: parseFloat(bkInput), type: 'bk' });
+    addFichePierre({ date: bkDate || today(), montantDirect: parseFloat(bkInput), type: 'bk' });
     setBkInput('');
     load();
   };
@@ -583,6 +584,13 @@ export default function Pierre() {
             onChange={(e) => setBkInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddBk()}
             style={{ flex: 1 }}
+          />
+          <input
+            className="input-field"
+            type="date"
+            value={bkDate}
+            onChange={(e) => setBkDate(e.target.value)}
+            style={{ width: 140 }}
           />
           <button className="btn" style={{ background: '#ea580c', color: 'white' }} onClick={handleAddBk}>+</button>
         </div>
