@@ -541,42 +541,35 @@ ${bopGlobal !== 0 ? `<p class="bop-global">BOP total : ${fmt(bopGlobal)} €</p>
             {showAnnulees ? 'Masquer annulées' : 'Voir annulées'}
           </button>
         </div>
-        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse && !rembNoteIds.has(n.id)).length === 0 && (
+        {notesRecues.filter((n) => !rembNoteIds.has(n.id) && ((n.rembourse && !n.etaitCacheeAvantRembourse) || (!n.rembourse && (!n.annulee || showAnnulees)))).length === 0 && (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>
         )}
-        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse && !rembNoteIds.has(n.id)).map((n) => (
-          <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee ? 0.5 : 1 }}>
-            <span style={{ flex: 1, fontSize: 13 }}>
-              {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-              {n.annulee && <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>}
-            </span>
-            <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
-            <button className="delete-btn" onClick={() => handleHideNote(n.id)}>✕</button>
-          </div>
-        ))}
+        {notesRecues.filter((n) => !rembNoteIds.has(n.id) && ((n.rembourse && !n.etaitCacheeAvantRembourse) || (!n.rembourse && (!n.annulee || showAnnulees)))).map((n) => {
+          const isCase1 = n.rembourse && !n.etaitCacheeAvantRembourse;
+          return (
+            <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee && !isCase1 ? 0.5 : 1 }}>
+              <span style={{ flex: 1, fontSize: 13, textDecoration: isCase1 ? 'line-through' : 'none', color: isCase1 ? '#6b7280' : 'inherit' }}>
+                {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
+                {n.annulee && !isCase1 && <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>}
+                {isCase1 && <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>remboursée{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}</span>}
+              </span>
+              <span style={{ fontWeight: 600, color: isCase1 ? '#6b7280' : (n.montant < 0 ? '#dc2626' : '#16a34a'), textDecoration: isCase1 ? 'line-through' : 'none' }}>{fmt(n.montant)} €</span>
+              {isCase1
+                ? <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(n.id)}>↩</button>
+                : <button className="delete-btn" onClick={() => handleHideNote(n.id)}>✕</button>
+              }
+            </div>
+          );
+        })}
         <div style={{ marginTop: 10, fontWeight: 700, color: totalNotes >= 0 ? '#16a34a' : '#dc2626' }}>
           Total notes : {fmt(totalNotes)} €
         </div>
       </div>
 
-      {/* Notes remboursées */}
-      {(notesCase1.length > 0 || rembFiches.length > 0) && (
+      {/* Notes remboursées — Cas 2 : crédit issu d'un remboursement d'une note de session passée */}
+      {rembFiches.length > 0 && (
         <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
-          <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées</div>
-          {/* Cas 1 : note active annulée par remboursement pendant la session */}
-          {notesCase1.map((n) => (
-            <div key={n.id} className="row-hover nota-row">
-              <span style={{ flex: 1, fontSize: 13 }}>
-                {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-                <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
-                  remboursée{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}
-                </span>
-              </span>
-              <span style={{ fontWeight: 600, color: '#6b7280' }}>{fmt(n.montant)} € (soldée)</span>
-              <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(n.id)}>↩</button>
-            </div>
-          ))}
-          {/* Cas 2 : crédit issu d'un remboursement d'une note de session passée */}
+          <div className="card-title" style={{ color: '#2563eb' }}>Remboursements reçus</div>
           {rembFiches.map((f) => (
             <div key={f.id} className="row-hover nota-row">
               <span style={{ flex: 1, fontSize: 13 }}>

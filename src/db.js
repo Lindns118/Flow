@@ -438,9 +438,26 @@ export function rembourserNote(id, date) {
   if (date) note.rembourseDate = date;
 
   if (!etaitCachee) {
-    // Cas 1 : note active → on l'annule (les deux se compensent, total = 0)
-    // Elle reste visible sur la fiche dans la section "Notes remboursées"
-    note.annulee = true;
+    // Cas 1 : note active
+    const noteMonth = note.date?.substring(0, 7);
+    const rembMonth = (date || new Date().toISOString().slice(0, 10)).substring(0, 7);
+    if (noteMonth && rembMonth && noteMonth !== rembMonth) {
+      // Mois différents : le mois de la note est clôturé → contre-note positive dans le mois du remboursement
+      note.annulee = true;
+      notes.push({
+        id: String(Date.now() + Math.random()),
+        personne: note.personne,
+        montant: -note.montant,
+        destinataire_key: note.destinataire_key,
+        destinataire_nom: note.destinataire_nom,
+        date: date || new Date().toISOString().slice(0, 10),
+        remboursement: true,
+        noteOriginaleId: id,
+      });
+    } else {
+      // Même mois : annulation simple (les deux se compensent, total = 0)
+      note.annulee = true;
+    }
   } else {
     // Cas 2 : note d'une session passée (cachée) → créer une entrée fiche +montant
     // La note reste cachée ; le crédit s'affiche via la fiche jusqu'au prochain reset
