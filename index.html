@@ -7,6 +7,25 @@
     <title>flow</title>
   </head>
   <body>
+    <script>
+      // Restore path after GitHub Pages 404 redirect
+      (function () {
+        var q = window.location.search;
+        if (q && q.indexOf('?p=') === 0) {
+          var params = {};
+          q.slice(1).split('&').forEach(function (s) {
+            var p = s.indexOf('=');
+            params[s.slice(0, p)] = decodeURIComponent(s.slice(p + 1));
+          });
+          if (params.p !== undefined) {
+            window.history.replaceState(
+              null, null,
+              '/Flow/' + params.p + (params.h || '')
+            );
+          }
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

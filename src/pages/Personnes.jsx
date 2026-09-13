@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getPersonnes, deletePersonne, deletePersonneData } from '../db';
+import { getPersonnes, deletePersonne, resetServeur, resetTous, renamePersonne, archiveToAncienServeur } from '../db';
 
 function Modal({ title, message, onConfirm, onCancel }) {
   return (
@@ -20,16 +20,30 @@ function Modal({ title, message, onConfirm, onCancel }) {
 export default function Personnes() {
   const [personnes, setPersonnes] = useState([]);
   const [modal, setModal] = useState(null);
+  const [editKey, setEditKey] = useState(null);
+  const [editNom, setEditNom] = useState('');
 
   const load = () => setPersonnes(getPersonnes());
   useEffect(() => { load(); }, []);
 
-  const confirmVider = (p) => {
+  const confirmReinitialiser = (p) => {
     setModal({
-      title: 'Vider les entrées',
-      message: `Supprimer toutes les fiches salaire de ${p.nom} ? (la personne et ses notes seront conservées)`,
+      title: 'Réinitialiser',
+      message: `Supprimer toutes les fiches de ${p.nom} et masquer ses notes de sa fiche ? (les notes restent visibles dans Notes Clients)`,
       onConfirm: () => {
-        deletePersonneData(p.key);
+        resetServeur(p.key);
+        setModal(null);
+        load();
+      },
+    });
+  };
+
+  const confirmReinitialiserTous = () => {
+    setModal({
+      title: 'Réinitialiser tous',
+      message: 'Supprimer toutes les fiches et masquer les notes de tous les serveurs (sauf Pierre) ?',
+      onConfirm: () => {
+        resetTous();
         setModal(null);
         load();
       },
@@ -48,9 +62,28 @@ export default function Personnes() {
     });
   };
 
+  const confirmArchiver = (p) => {
+    setModal({
+      title: 'Archiver en ancien serveur',
+      message: `Déplacer ${p.nom} vers Anciens Serveurs ? Sa dette actuelle sera copiée comme dette de départ. Ses fiches salaire seront supprimées.`,
+      onConfirm: () => {
+        archiveToAncienServeur(p.key);
+        setModal(null);
+        load();
+      },
+    });
+  };
+
   return (
     <div className="page-container">
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Personnes</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Personnes</h1>
+        {personnes.length > 0 && (
+          <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={confirmReinitialiserTous}>
+            Réinitialiser tous
+          </button>
+        )}
+      </div>
 
       {modal && (
         <Modal
@@ -67,28 +100,64 @@ export default function Personnes() {
 
       {personnes.map((p) => (
         <div key={p.key} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn btn-danger"
-            style={{ padding: '6px 10px', fontSize: 13 }}
-            onClick={() => confirmVider(p)}
-            title="Vider les entrées (fiches salaire)"
-          >
-            🗑️
-          </button>
+          {p.key !== 'pierre' && (
+            <button
+              className="btn btn-danger"
+              style={{ padding: '6px 10px', fontSize: 13 }}
+              onClick={() => confirmReinitialiser(p)}
+              title="Réinitialiser (fiches + notes masquées)"
+            >↺</button>
+          )}
 
-          <Link to={`/personne/${p.key}`} style={{ flex: 1, fontWeight: 600, fontSize: 16, color: '#1f2937' }}>
-            {p.nom}
-          </Link>
-          <span style={{ color: '#9ca3af', fontSize: 12 }}>{p.key}</span>
+          {editKey === p.key ? (
+            <>
+              <input
+                className="input-field"
+                value={editNom}
+                onChange={(e) => setEditNom(e.target.value)}
+                style={{ flex: 1, fontSize: 15 }}
+                autoFocus
+              />
+              <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 13 }}
+                onClick={() => {
+                  if (editNom.trim()) { renamePersonne(p.key, editNom.trim()); load(); }
+                  setEditKey(null);
+                }}
+              >✓</button>
+              <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 13 }}
+                onClick={() => setEditKey(null)}
+              >✕</button>
+            </>
+          ) : (
+            <>
+              <Link to={p.key === 'pierre' ? '/pierre' : `/personne/${p.key}`} style={{ flex: 1, fontWeight: 600, fontSize: 16, color: '#1f2937' }}>
+                {p.nom}
+              </Link>
+              {p.key !== 'pierre' && (
+                <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 13 }}
+                  onClick={() => { setEditKey(p.key); setEditNom(p.nom); }}
+                  title="Renommer"
+                >✏️</button>
+              )}
+            </>
+          )}
 
-          <button
-            className="btn btn-danger"
-            style={{ padding: '6px 10px', fontSize: 13 }}
-            onClick={() => confirmSupprimer(p)}
-            title="Supprimer la personne"
-          >
-            ✕
-          </button>
+          {editKey !== p.key && p.key !== 'pierre' && (
+            <>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '6px 10px', fontSize: 13 }}
+                onClick={() => confirmArchiver(p)}
+                title="Archiver en ancien serveur"
+              >👴</button>
+              <button
+                className="btn btn-danger"
+                style={{ padding: '6px 10px', fontSize: 13 }}
+                onClick={() => confirmSupprimer(p)}
+                title="Supprimer la personne"
+              >✕</button>
+            </>
+          )}
         </div>
       ))}
     </div>
