@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - claude/build-calculator-app-kCFlX
+      - claude/nice-curie-P7TVF
 
 permissions:
   contents: read
