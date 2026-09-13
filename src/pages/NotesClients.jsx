@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getNotes, saveNotes, deleteNote, annulerRemboursement, getHiddenNotes, hideMatchingPairs } from '../db';
+import { getNotes, saveNotes, deleteNote, annulerRemboursement, getHiddenNotes, hideMatchingPairs, reconcileRemboursements } from '../db';
 import jsPDF from 'jspdf';
 
 const normName = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
@@ -34,13 +34,19 @@ export default function NotesClients() {
   const [hiddenIds, setHiddenIds] = useState(new Set());
   const [showHidden, setShowHidden] = useState(false);
   const [showAnnulees, setShowAnnulees] = useState({});
+  const [showRemboursees, setShowRemboursees] = useState({});
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [triPar, setTriPar] = useState('serveur');
+  const [sortDate, setSortDate] = useState('desc');
+  const [exportSort, setExportSort] = useState('alpha');
+  const [exportServeur, setExportServeur] = useState('tous');
+  const [exportModal, setExportModal] = useState(null); // null | 'global' | 'serveur' | 'client'
   const [search, setSearch] = useState('');
 
   const load = () => {
     hideMatchingPairs();
+    reconcileRemboursements();
     setNotes(getNotes());
     setHiddenIds(new Set(getHiddenNotes()));
   };
@@ -74,6 +80,18 @@ export default function NotesClients() {
 
   const totalHiddenCount = pairHiddenIds.size;
 
+  // Unique servers list for export filter
+  const serveurList = [...new Map(
+    notes
+      .filter((n) => n.destinataire_key)
+      .map((n) => [n.destinataire_key, n.destinataire_nom || n.destinataire_key])
+  ).entries()]
+    .sort(([, a], [, b]) => a.localeCompare(b, 'fr'))
+    .map(([key, nom]) => ({ key, nom }));
+
+  const filterByExportServeur = (arr) =>
+    exportServeur === 'tous' ? arr : arr.filter((n) => n.destinataire_key === exportServeur);
+
   const handleDelete = (id) => { deleteNote(id); load(); };
 
   const handleEdit = (n) => {
@@ -101,6 +119,7 @@ export default function NotesClients() {
   };
 
   const toggleAnnulees = (key) => setShowAnnulees((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleRemboursees = (key) => setShowRemboursees((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Export PDF global
   const exportPDF = () => {
@@ -117,9 +136,11 @@ export default function NotesClients() {
     doc.text('Notes Clients' + (search.trim() ? ` — "${search.trim()}"` : ''), margin, 12);
     doc.setFont(undefined, 'normal');
 
-    const activeNotes = filteredNotes
-      .filter((n) => !n.annulee && !pairHiddenIds.has(n.id))
-      .sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
+    const activeNotes = filterByExportServeur(filteredNotes)
+      .filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id))
+      .sort((a, b) => exportSort === 'alpha'
+        ? (a.personne || '').localeCompare(b.personne || '', 'fr')
+        : (b.date || '').localeCompare(a.date || ''));
 
     const drawRow = (cells, bold = false) => {
       let x = margin;
@@ -157,7 +178,7 @@ export default function NotesClients() {
     doc.text(title, margin, 12); doc.setFont(undefined, 'normal');
 
     const grp = {};
-    filteredNotes.filter((n) => !n.annulee && !pairHiddenIds.has(n.id)).forEach((n) => {
+    filterByExportServeur(filteredNotes).filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id)).forEach((n) => {
       const k = groupBy === 'serveur'
         ? (n.destinataire_key || 'inconnu')
         : ((n.personne || '').toLowerCase().replace(/\s+/g, '_') || 'inconnu');
@@ -170,7 +191,6 @@ export default function NotesClients() {
 
     const groups = Object.values(grp).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     const colLabel = groupBy === 'serveur' ? 'Client' : 'Serveur';
-    const cols = [{ w: 65 }, { w: 28 }, { w: 35 }];
 
     const drawCell = (cx, cy, w, txt, bold) => {
       doc.rect(cx, cy, w, rowH);
@@ -193,19 +213,44 @@ export default function NotesClients() {
       doc.setTextColor(0, 0, 0); y += 5;
       doc.setFontSize(7.5);
       let x = margin;
-      [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
-      y += rowH;
-      [...group.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).forEach((n) => {
-        if (y > 278) { doc.addPage(); y = 20; }
-        doc.setFontSize(7.5); x = margin;
-        const row = groupBy === 'serveur'
-          ? [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']
-          : [n.destinataire_nom || n.destinataire_key || '', fmtDate(n.date), fmt(n.montant) + ' €'];
-        row.forEach((val, i) => { drawCell(x, y, cols[i].w, val, false); x += cols[i].w; });
+
+      if (exportSort === 'alpha') {
+        // Group by name and sum amounts
+        const byName = {};
+        group.notes.forEach((n) => {
+          const name = groupBy === 'serveur' ? (n.personne || '?') : (n.destinataire_nom || n.destinataire_key || '?');
+          if (!byName[name]) byName[name] = 0;
+          byName[name] += n.montant;
+        });
+        const nameRows = Object.entries(byName).sort(([a], [b]) => a.localeCompare(b, 'fr'));
+        const colsAlpha = [{ w: 88 }, { w: 40 }];
+        [colLabel, 'Somme due'].forEach((h, i) => { drawCell(x, y, colsAlpha[i].w, h, true); x += colsAlpha[i].w; });
         y += rowH;
-      });
-      doc.setFontSize(7.5); x = margin;
-      ['Total', '', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, cols[i].w, val, true); x += cols[i].w; });
+        nameRows.forEach(([name, sum]) => {
+          if (y > 278) { doc.addPage(); y = 20; }
+          doc.setFontSize(7.5); x = margin;
+          [name, fmt(sum) + ' €'].forEach((val, i) => { drawCell(x, y, colsAlpha[i].w, val, false); x += colsAlpha[i].w; });
+          y += rowH;
+        });
+        x = margin;
+        ['Total', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, colsAlpha[i].w, val, true); x += colsAlpha[i].w; });
+      } else {
+        const cols = [{ w: 65 }, { w: 28 }, { w: 35 }];
+        [colLabel, 'Date', 'Montant'].forEach((h, i) => { drawCell(x, y, cols[i].w, h, true); x += cols[i].w; });
+        y += rowH;
+        [...group.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '')).forEach((n) => {
+          if (y > 278) { doc.addPage(); y = 20; }
+          doc.setFontSize(7.5); x = margin;
+          const row = groupBy === 'serveur'
+            ? [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']
+            : [n.destinataire_nom || n.destinataire_key || '', fmtDate(n.date), fmt(n.montant) + ' €'];
+          row.forEach((val, i) => { drawCell(x, y, cols[i].w, val, false); x += cols[i].w; });
+          y += rowH;
+        });
+        x = margin;
+        ['Total', '', fmt(total) + ' €'].forEach((val, i) => { drawCell(x, y, cols[i].w, val, true); x += cols[i].w; });
+      }
+
       y += rowH + 6;
     });
     doc.save(`notes-${groupBy}.pdf`);
@@ -227,6 +272,11 @@ export default function NotesClients() {
             style={{ fontSize: 13, padding: '6px 14px' }}
             onClick={() => setTriPar('client')}
           >Par client</button>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 13, padding: '6px 14px' }}
+            onClick={() => setSortDate((s) => s === 'desc' ? 'asc' : 'desc')}
+          >{sortDate === 'desc' ? '↓ Récente' : '↑ Ancienne'}</button>
         </div>
       </div>
 
@@ -242,15 +292,64 @@ export default function NotesClients() {
         />
       </div>
 
+      {/* Export modal */}
+      {exportModal && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3>Export PDF — {exportModal === 'global' ? 'Liste globale' : exportModal === 'serveur' ? 'Par serveur' : 'Par client'}</h3>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Serveur</label>
+              <select
+                value={exportServeur}
+                onChange={(e) => setExportServeur(e.target.value)}
+                className="input-field"
+                style={{ width: '100%' }}
+              >
+                <option value="tous">Tous les serveurs</option>
+                {serveurList.map((s) => (
+                  <option key={s.key} value={s.key}>{s.nom}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Tri des notes</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className={exportSort === 'alpha' ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ fontSize: 13, flex: 1 }}
+                  onClick={() => setExportSort('alpha')}
+                >A → Z</button>
+                <button
+                  className={exportSort === 'date' ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ fontSize: 13, flex: 1 }}
+                  onClick={() => setExportSort('date')}
+                >Date</button>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setExportModal(null)}>Annuler</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setExportModal(null);
+                  if (exportModal === 'global') exportPDF();
+                  else exportPDFGroupe(exportModal);
+                }}
+              >Exporter</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Actions bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={exportPDF}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setExportModal('global')}>
           Export PDF global
         </button>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('serveur')}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setExportModal('serveur')}>
           Export par serveur
         </button>
-        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => exportPDFGroupe('client')}>
+        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setExportModal('client')}>
           Export par client
         </button>
         {totalHiddenCount > 0 && (
@@ -271,14 +370,20 @@ export default function NotesClients() {
       )}
 
       {sortedGroups.map(([key, group]) => {
-        const activeNotes = group.notes.filter((n) => !n.annulee && !pairHiddenIds.has(n.id));
+        const activeNotes = group.notes.filter((n) => !n.annulee && !n.rembourse && !pairHiddenIds.has(n.id));
+        const rembourseesNotes = group.notes.filter((n) => !n.annulee && n.rembourse);
         // Only show pairs (notes hidden because they cancel each other), not reset-hidden notes
-        const hiddenNotes = group.notes.filter((n) => !n.annulee && pairHiddenIds.has(n.id));
+        const hiddenNotes = group.notes.filter((n) => !n.annulee && !n.rembourse && pairHiddenIds.has(n.id));
         const annuleesNotes = group.notes.filter((n) => n.annulee);
         const total = activeNotes.reduce((a, b) => a + b.montant, 0);
         const showAnn = showAnnulees[key];
+        const showRemb = showRemboursees[key];
 
-        const sorted = (arr) => [...arr].sort((a, b) => (a.personne || '').localeCompare(b.personne || '', 'fr'));
+        const sorted = (arr) => [...arr].sort((a, b) =>
+          sortDate === 'desc'
+            ? (b.date || '').localeCompare(a.date || '')
+            : (a.date || '').localeCompare(b.date || '')
+        );
 
         const renderNote = (n, isHidden = false) => (
           <div key={n.id}>
@@ -325,7 +430,7 @@ export default function NotesClients() {
           </div>
         );
 
-        if (activeNotes.length === 0 && (!showHidden || hiddenNotes.length === 0) && annuleesNotes.length === 0) return null;
+        if (activeNotes.length === 0 && rembourseesNotes.length === 0 && (!showHidden || hiddenNotes.length === 0) && annuleesNotes.length === 0) return null;
 
         return (
           <div key={key} className="card">
@@ -339,18 +444,29 @@ export default function NotesClients() {
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>({hiddenNotes.length} cachée{hiddenNotes.length > 1 ? 's' : ''})</span>
                 )}
               </div>
-              {annuleesNotes.length > 0 && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => toggleAnnulees(key)}
-                >
-                  {showAnn ? 'Masquer annulées' : `Annulées (${annuleesNotes.length})`}
-                </button>
-              )}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {rembourseesNotes.length > 0 && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px', color: showRemb ? '#9333ea' : undefined }}
+                    onClick={() => toggleRemboursees(key)}
+                  >
+                    {showRemb ? 'Masquer remb.' : `Remboursées (${rembourseesNotes.length})`}
+                  </button>
+                )}
+                {annuleesNotes.length > 0 && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => toggleAnnulees(key)}
+                  >
+                    {showAnn ? 'Masquer annulées' : `Annulées (${annuleesNotes.length})`}
+                  </button>
+                )}
+              </div>
             </div>
 
-            {activeNotes.length === 0 && !showHidden && (
+            {activeNotes.length === 0 && !showHidden && rembourseesNotes.length === 0 && (
               <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note active</div>
             )}
 
@@ -360,6 +476,33 @@ export default function NotesClients() {
               <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 600 }}>CACHÉES</div>
                 {sorted(hiddenNotes).map((n) => renderNote(n, true))}
+              </div>
+            )}
+
+            {showRemb && rembourseesNotes.length > 0 && (
+              <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ fontSize: 11, color: '#9333ea', marginBottom: 6, fontWeight: 600 }}>REMBOURSÉES</div>
+                {sorted(rembourseesNotes).map((n) => (
+                  <div key={n.id} className="nota-row" style={{ opacity: 0.65 }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>
+                      {triPar === 'serveur'
+                        ? <>{n.personne} <span style={{ color: '#9ca3af' }}>→ {group.nom}</span></>
+                        : <>{group.nom} <span style={{ color: '#9ca3af' }}>→ {n.destinataire_nom}</span></>
+                      }
+                      {' '}({fmtDate(n.date)})
+                      <span style={{ marginLeft: 6, fontSize: 11, color: '#9333ea', fontWeight: 600 }}>remb.</span>
+                    </span>
+                    <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>
+                      {fmt(n.montant)} €
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
+                      title="Annuler le remboursement"
+                      onClick={(e) => { e.stopPropagation(); annulerRemboursement(n.id); load(); }}
+                    >↩</button>
+                  </div>
+                ))}
               </div>
             )}
 

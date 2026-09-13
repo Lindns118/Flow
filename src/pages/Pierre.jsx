@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   getFichesPierre, addFichePierre, deleteFichePierre, updateFichePierre, deleteFichesPierreMois,
-  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette,
+  getNotes, addNote, getPersonnes, resetPierre, getHiddenNotes, getDette, annulerRemboursement,
   getPierreMonthReports, savePierreMonthReports,
 } from '../db';
 import jsPDF from 'jspdf';
@@ -9,17 +9,16 @@ import jsPDF from 'jspdf';
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
-const nextMonth = (mois) => {
-  if (!mois) return '';
-  const [y, m] = mois.split('-').map(Number);
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-};
-
 const fmtMois = (m) => {
   if (!m) return '';
   const [y, mo] = m.split('-');
   const names = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
   return `${names[parseInt(mo, 10) - 1]} ${y}`;
+};
+const nextMonth = (mois) => {
+  const [y, m] = mois.split('-').map(Number);
+  if (m === 12) return `${y + 1}-01`;
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
 };
 
 export default function Pierre() {
@@ -48,12 +47,12 @@ export default function Pierre() {
   const load = () => {
     const all = getFichesPierre().sort((a, b) => b.date.localeCompare(a.date));
     setFiches(all);
+    const rembIds = new Set(all.filter((f) => f.type === 'remboursement_note').map((f) => f.noteId).filter(Boolean));
     const hidden = getHiddenNotes();
-    setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id)));
+    setNotesClients(getNotes().filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id) && !rembIds.has(n.id)));
     setPersonnesList(getPersonnes());
     setDette(getDette('pierre'));
     setMonthReports(getPierreMonthReports());
-    // Auto-select current month if nothing selected
     setSelectedMois((prev) => {
       if (prev) return prev;
       const curMois = today().substring(0, 7);
@@ -73,25 +72,48 @@ export default function Pierre() {
     flash('✓ Pierre réinitialisé');
   };
 
-  const fichesActives = fiches.filter((f) => f.type !== 'bk');
+  // Exclude bk and remboursement_note from the main fiches display — only salaire + retrait
+  const fichesActives = fiches.filter((f) => f.type === 'salaire' || f.type === 'retrait');
+  const rembFiches = fiches.filter((f) => f.type === 'remboursement_note');
   const bkFiches = fiches.filter((f) => f.type === 'bk');
 
-  // Group by month (exclude bk entries — they're shown in their own section)
+  // Group by month — track salaires and retraits separately
   const moisMap = fichesActives.reduce((acc, f) => {
     const m = f.mois || f.date.substring(0, 7);
-    if (!acc[m]) acc[m] = { total: 0, fiches: [] };
-    acc[m].total += f.montant;
+    if (!acc[m]) acc[m] = { salaires: 0, retraits: 0, fiches: [] };
+    if (f.type === 'salaire') acc[m].salaires += f.montant;
+    if (f.type === 'retrait') acc[m].retraits += Math.abs(f.montant);
     acc[m].fiches.push(f);
     return acc;
   }, {});
   const moisList = Object.keys(moisMap).sort((a, b) => b.localeCompare(a));
 
   const fichesOfMois = selectedMois ? (moisMap[selectedMois]?.fiches || []) : [];
-  const bkOfMois = bkFiches.filter((f) => (f.mois || f.date?.substring(0, 7)) === selectedMois);
-  const notesOfMois = notesClients.filter((n) => n.date?.startsWith(selectedMois || ''));
+  const salairesDuMois = [...fichesOfMois].filter((f) => f.type === 'salaire').sort((a, b) => b.date.localeCompare(a.date));
+  const retraitsDuMois = [...fichesOfMois].filter((f) => f.type === 'retrait').sort((a, b) => b.date.localeCompare(a.date));
+  const totalSalairesMois = salairesDuMois.reduce((a, b) => a + b.montant, 0);
+  const totalRetraitsMois = retraitsDuMois.reduce((a, b) => a + Math.abs(b.montant), 0);
 
-  // Report du mois précédent : si le mois a été validé, utiliser le report stocké ; sinon la dette du reset
-  const reportDuMoisPrecedent = selectedMois && selectedMois in monthReports ? monthReports[selectedMois] : dette;
+  const bkFichesDuMois = bkFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
+  const totalBk = bkFichesDuMois.reduce((a, b) => a + b.montant, 0);
+  const notesClientsDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
+  const totalNotes = notesClientsDuMois.reduce((a, b) => a + b.montant, 0);
+  const rembFichesDuMois = rembFiches.filter((f) => (f.date || '').substring(0, 7) === selectedMois);
+  const totalRemb = rembFichesDuMois.reduce((a, b) => a + Math.abs(b.montant), 0);
+
+  // Carry-over: use month report if available (already includes previous dette), else fall back to global dette
+  const reportDuMoisPrecedent = monthReports[selectedMois] !== undefined ? monthReports[selectedMois] : dette;
+  // Notes are stored with their natural sign (negative = reduces Pierre's total, positive = increases)
+  const totalGeneral = totalSalairesMois - totalRetraitsMois + totalNotes + totalRemb - totalBk + reportDuMoisPrecedent;
+
+  const handleValiderMois = () => {
+    const reports = getPierreMonthReports();
+    reports[nextMonth(selectedMois)] = totalGeneral < 0 ? totalGeneral : 0;
+    savePierreMonthReports(reports);
+    setConfirmValider(false);
+    load();
+    flash(`✓ ${fmtMois(selectedMois)} validé — Report : ${totalGeneral < 0 ? fmt(totalGeneral) : '0,00'} €`);
+  };
 
   const handleSaveFiche = () => {
     if (!date) return;
@@ -106,10 +128,7 @@ export default function Pierre() {
     flash('✓ Fiche sauvegardée');
   };
 
-  const handleDelete = (id) => {
-    deleteFichePierre(id);
-    load();
-  };
+  const handleDelete = (id) => { deleteFichePierre(id); load(); };
 
   const handleDeleteMois = (mois) => {
     deleteFichesPierreMois(mois);
@@ -166,62 +185,131 @@ export default function Pierre() {
     load();
   };
 
-  const handleValiderMois = () => {
-    if (!selectedMois) return;
-    const reports = getPierreMonthReports();
-    reports[nextMonth(selectedMois)] = totalGeneral < 0 ? totalGeneral : 0;
-    savePierreMonthReports(reports);
-    setMonthReports({ ...reports });
-    setConfirmValider(false);
-    flash(`✓ ${fmtMois(selectedMois)} validé — Report : ${totalGeneral < 0 ? fmt(totalGeneral) : '0,00'} €`);
-  };
+  const handlePrint = () => {
+    const row = (cells, cls = '') => `<tr class="${cls}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+    const rowH = (cells) => `<tr>${cells.map((c) => `<th>${c}</th>`).join('')}</tr>`;
 
-  const totalFichesMois = fichesOfMois.reduce((a, b) => a + b.montant, 0);
-  const totalBkMois = bkOfMois.reduce((a, b) => a + b.montant, 0);
-  const totalNotesMois = notesOfMois.reduce((a, b) => a + b.montant, 0);
-  const totalGeneral = totalFichesMois + totalNotesMois - totalBkMois + reportDuMoisPrecedent;
+    const rembNoteIdsThisMois = new Set(rembFichesDuMois.map((f) => f.noteId).filter(Boolean));
+
+    const salairesRows = salairesDuMois.map((f) => row([fmtDate(f.date), f.heures + 'h', fmt(f.montant) + ' €'])).join('');
+    const retraitsRows = retraitsDuMois.map((f) => row([fmtDate(f.date), fmt(Math.abs(f.montant)) + ' €'])).join('');
+
+    const allNotesMois = getNotes()
+      .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && (n.date || '').substring(0, 7) === selectedMois)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const noteRows = allNotesMois.map((n) => {
+      const barré = rembNoteIdsThisMois.has(n.id);
+      const style = barré ? ' style="text-decoration:line-through;opacity:0.55"' : '';
+      return `<tr${style}><td>${n.personne || ''}</td><td>${fmtDate(n.date)}</td><td>${fmt(n.montant)} €</td></tr>`;
+    }).join('');
+    const rembRows = rembFichesDuMois.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
+
+    const bkSection = bkFichesDuMois.length ? `
+      <h3 class="bk-titre">BK (déduit du total)</h3>
+      <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+        ${bkFichesDuMois.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('')}
+        ${row(['Total BK', fmt(totalBk) + ' €'], 'total-row')}
+      </tbody></table>` : '';
+
+    const reportLine = reportDuMoisPrecedent !== 0 ? `<p class="dette">Report période précédente : ${fmt(reportDuMoisPrecedent)} €</p>` : '';
+    const notesSign = totalNotes >= 0 ? `+ ${fmt(totalNotes)}` : `− ${fmt(Math.abs(totalNotes))}`;
+    const formula = `${fmt(totalSalairesMois)} (sal.) − ${fmt(totalRetraitsMois)} (retraits) ${notesSign} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBk)} (BK)${reportDuMoisPrecedent !== 0 ? ` + ${fmt(reportDuMoisPrecedent)} (report)` : ''} = ${fmt(totalGeneral)} €`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pierre — ${fmtMois(selectedMois)}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:9pt;padding:12mm;color:#000}
+  h1{font-size:13pt;margin-bottom:6px}
+  .dette{color:#dc2626;font-weight:700;margin-bottom:8px}
+  .trois-cols{display:flex;gap:10px;margin-bottom:12px;align-items:flex-start}
+  .col{flex:1}
+  .col-titre{font-size:8pt;font-weight:700;margin-bottom:3px}
+  table{border-collapse:collapse;width:100%;margin-bottom:6px}
+  td,th{border:1px solid #555;padding:2px 5px;font-size:8pt}
+  th{background:#f0f0f0;font-weight:700;text-align:left}
+  .total-row td{font-weight:700}
+  .remb-titre td{color:#2563eb;font-weight:700;background:#eff6ff}
+  .bk-titre{color:#ea580c;font-size:9pt;font-weight:700;margin:10px 0 3px}
+  .grand-total{font-size:13pt;font-weight:700;margin-top:12px}
+  .formule{font-size:7.5pt;color:#555;margin-top:3px}
+  @media print{@page{size:A4 portrait;margin:10mm}body{padding:0}}
+</style></head><body>
+<h1>Pierre — ${fmtMois(selectedMois)}</h1>
+${reportLine}
+<div class="trois-cols">
+  <div class="col">
+    <div class="col-titre">Salaires</div>
+    <table><thead>${rowH(['Date', 'H', 'Montant'])}</thead><tbody>
+      ${salairesRows}
+      ${row(['Total', '', fmt(totalSalairesMois) + ' €'], 'total-row')}
+    </tbody></table>
+  </div>
+  <div class="col">
+    <div class="col-titre" style="color:#dc2626">Retraits (−)</div>
+    <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+      ${retraitsRows || '<tr><td colspan="2" style="color:#999">Aucun</td></tr>'}
+      ${row(['Total', fmt(totalRetraitsMois) + ' €'], 'total-row')}
+    </tbody></table>
+  </div>
+  <div class="col">
+    <div class="col-titre">Notes clients reçues (−)</div>
+    <table><thead>${rowH(['Client', 'Date', 'Montant'])}</thead><tbody>
+      ${noteRows || '<tr><td colspan="3" style="color:#999">Aucune</td></tr>'}
+      ${allNotesMois.length ? row(['Total notes', '', fmt(totalNotes) + ' €'], 'total-row') : ''}
+      ${rembFichesDuMois.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées (+)</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
+    </tbody></table>
+  </div>
+</div>
+${bkSection}
+<p class="grand-total">Total Général : ${fmt(totalGeneral)} €</p>
+<p class="formule">${formula}</p>
+<script>window.onload=()=>window.print();</script>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  };
 
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
     const rowH = 7;
-
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.text(`Pierre${selectedMois ? ' — ' + fmtMois(selectedMois) : ''}`, margin, 12);
-    doc.setFont(undefined, 'normal');
-
     let y = 20;
 
+    doc.setFontSize(14); doc.setFont(undefined, 'bold');
+    doc.text(`Pierre — ${fmtMois(selectedMois)}`, margin, 12);
+    doc.setFont(undefined, 'normal');
+
     if (reportDuMoisPrecedent !== 0) {
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(reportDuMoisPrecedent < 0 ? 220 : 22, reportDuMoisPrecedent < 0 ? 38 : 163, reportDuMoisPrecedent < 0 ? 38 : 74);
-      doc.text(`Report mois précédent : ${fmt(reportDuMoisPrecedent)} €`, margin, y);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
+      doc.setFontSize(10); doc.setFont(undefined, 'bold');
+      doc.setTextColor(220, 38, 38);
+      doc.text(`Report période précédente : ${fmt(reportDuMoisPrecedent)} €`, margin, y);
+      doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal');
       y += 8;
     }
-
     y += 2;
 
-    // Left table: Fiches (Date | Type | H | Montant)
-    const leftX = margin;
-    const leftCols = [
-      { header: 'Date', w: 26 },
-      { header: 'Type', w: 20 },
-      { header: 'H', w: 14 },
-      { header: 'Montant', w: 28 },
-    ]; // 88mm
+    // Three-column layout
+    // Salaires: Date(20) + H(12) + Montant(22) = 54mm
+    // Gap: 5mm
+    // Retraits: Date(20) + Montant(22) = 42mm
+    // Gap: 5mm
+    // Notes: Client(34) + Date(18) + Montant(24) = 76mm
+    // Total: 54+5+42+5+76 = 182mm + 12(margin) = 194mm < 210mm ✓
+    const salCols = [{ header: 'Date', w: 20 }, { header: 'H', w: 12 }, { header: 'Montant', w: 22 }];
+    const retCols = [{ header: 'Date', w: 20 }, { header: 'Montant', w: 22 }];
+    const noteCols = [{ header: 'Client', w: 34 }, { header: 'Date', w: 18 }, { header: 'Montant', w: 24 }];
 
-    // Right table: Notes clients (Client | Date | Montant)
-    const rightX = leftX + leftCols.reduce((a, c) => a + c.w, 0) + 8; // 12+88+8=108
-    const rightCols = [{ header: 'Client', w: 40 }, { header: 'Date', w: 22 }, { header: 'Montant', w: 26 }]; // 88mm
+    const salX = margin;
+    const retX = salX + 54 + 5;
+    const noteX = retX + 42 + 5;
 
-    const drawRow = (startX, cols, cy, cells, bold = false) => {
+    const drawRow = (startX, cols, cy, cells, bold = false, strikethrough = false) => {
       let x = startX;
       doc.setFont(undefined, bold ? 'bold' : 'normal');
       doc.setFontSize(bold ? 8.5 : 8);
+      if (strikethrough) doc.setTextColor(150, 150, 150);
       cols.forEach((col, i) => {
         doc.rect(x, cy, col.w, rowH);
         const val = cells[i];
@@ -230,85 +318,150 @@ export default function Pierre() {
           const maxW = col.w - 2;
           while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
           doc.text(txt, x + 1.2, cy + rowH - 1.8);
+          if (strikethrough) doc.line(x + 1.2, cy + rowH / 2, x + col.w - 1.2, cy + rowH / 2);
         }
         x += col.w;
       });
+      if (strikethrough) doc.setTextColor(0, 0, 0);
     };
 
     // Section labels
-    doc.setFontSize(8.5);
-    doc.setFont(undefined, 'bold');
-    doc.text('Fiches', leftX, y - 1);
-    doc.text('Notes clients reçues', rightX, y - 1);
+    doc.setFontSize(8.5); doc.setFont(undefined, 'bold');
+    doc.text('Salaires', salX, y - 1);
+    doc.setTextColor(220, 38, 38); doc.text('Retraits (−)', retX, y - 1); doc.setTextColor(0, 0, 0);
+    doc.text('Notes clients reçues (−)', noteX, y - 1);
     doc.setFont(undefined, 'normal');
 
-    // Headers
-    drawRow(leftX, leftCols, y, leftCols.map((c) => c.header), true);
-    drawRow(rightX, rightCols, y, rightCols.map((c) => c.header), true);
+    drawRow(salX, salCols, y, salCols.map((c) => c.header), true);
+    drawRow(retX, retCols, y, retCols.map((c) => c.header), true);
+    drawRow(noteX, noteCols, y, noteCols.map((c) => c.header), true);
 
-    let leftY = y + rowH;
-    let rightY = y + rowH;
+    let salY = y + rowH;
+    let retY = y + rowH;
+    let noteY = y + rowH;
 
-    // Fiches rows (salaire/retrait only, sorted by date desc, month-specific)
-    [...fichesOfMois].sort((a, b) => b.date.localeCompare(a.date)).forEach((f) => {
-      drawRow(leftX, leftCols, leftY, [
-        fmtDate(f.date),
-        f.type === 'retrait' ? 'Retrait' : 'Salaire',
-        f.type === 'salaire' ? f.heures + 'h' : '',
-        fmt(f.montant) + ' €',
-      ]);
-      leftY += rowH;
+    // Salaires
+    salairesDuMois.forEach((f) => {
+      drawRow(salX, salCols, salY, [fmtDate(f.date), f.heures + 'h', fmt(f.montant) + ' €']);
+      salY += rowH;
     });
-    // Fiches total
-    drawRow(leftX, leftCols, leftY, ['Total', '', '', fmt(totalFichesMois) + ' €'], true);
-    leftY += rowH;
+    drawRow(salX, salCols, salY, ['Total', '', fmt(totalSalairesMois) + ' €'], true);
+    salY += rowH;
 
-    // Notes clients rows (month-specific)
-    notesOfMois.forEach((n) => {
-      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
-      rightY += rowH;
-    });
-    // Notes total
-    if (notesOfMois.length > 0) {
-      drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotesMois) + ' €'], true);
-      rightY += rowH;
+    // Retraits
+    if (retraitsDuMois.length === 0) {
+      drawRow(retX, retCols, retY, ['Aucun', '']);
+      retY += rowH;
+    } else {
+      retraitsDuMois.forEach((f) => {
+        drawRow(retX, retCols, retY, [fmtDate(f.date), fmt(Math.abs(f.montant)) + ' €']);
+        retY += rowH;
+      });
+    }
+    drawRow(retX, retCols, retY, ['Total', fmt(totalRetraitsMois) + ' €'], true);
+    retY += rowH;
+
+    // Notes
+    const rembNoteIdsThisMois = new Set(rembFichesDuMois.map((f) => f.noteId).filter(Boolean));
+    const allNotesMoisPDF = getNotes()
+      .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && (n.date || '').substring(0, 7) === selectedMois)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    if (allNotesMoisPDF.length === 0) {
+      drawRow(noteX, noteCols, noteY, ['Aucune', '', '']);
+      noteY += rowH;
+    } else {
+      allNotesMoisPDF.forEach((n) => {
+        drawRow(noteX, noteCols, noteY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], false, rembNoteIdsThisMois.has(n.id));
+        noteY += rowH;
+      });
+      drawRow(noteX, noteCols, noteY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
+      noteY += rowH;
     }
 
-    y = Math.max(leftY, rightY) + 8;
+    // Remboursements
+    if (rembFichesDuMois.length > 0) {
+      doc.setFontSize(7.5); doc.setFont(undefined, 'bold');
+      doc.setTextColor(37, 99, 235);
+      doc.text('Notes remboursées (+)', noteX + 1, noteY + rowH - 2);
+      doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal');
+      doc.rect(noteX, noteY, noteCols.reduce((a, c) => a + c.w, 0), rowH);
+      noteY += rowH;
+      rembFichesDuMois.forEach((f) => {
+        drawRow(noteX, noteCols, noteY, [f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        noteY += rowH;
+      });
+      drawRow(noteX, noteCols, noteY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
+      noteY += rowH;
+    }
 
-    // BK section (month-specific)
+    y = Math.max(salY, retY, noteY) + 8;
+
+    // BK section
     const bkSectionCols = [{ header: 'Date', w: 28 }, { header: 'Montant', w: 30 }];
-    if (bkOfMois.length > 0) {
-      doc.setFontSize(8.5);
-      doc.setFont(undefined, 'bold');
+    if (bkFichesDuMois.length > 0) {
+      doc.setFontSize(8.5); doc.setFont(undefined, 'bold');
       doc.setTextColor(234, 88, 12);
       doc.text('BK (déduit du total)', margin, y - 1);
-      doc.setFont(undefined, 'normal');
-      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal'); doc.setTextColor(0, 0, 0);
       drawRow(margin, bkSectionCols, y, bkSectionCols.map((c) => c.header), true);
       y += rowH;
-      bkOfMois.forEach((f) => {
-        drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']);
-        y += rowH;
-      });
-      drawRow(margin, bkSectionCols, y, ['Total BK', fmt(totalBkMois) + ' €'], true);
+      bkFichesDuMois.forEach((f) => { drawRow(margin, bkSectionCols, y, [fmtDate(f.date), fmt(f.montant) + ' €']); y += rowH; });
+      drawRow(margin, bkSectionCols, y, ['Total BK', fmt(totalBk) + ' €'], true);
       y += rowH + 8;
     }
 
     // Grand total
-    doc.setFontSize(11);
-    doc.setFont(undefined, 'bold');
+    doc.setFontSize(11); doc.setFont(undefined, 'bold');
     doc.text(`Total Général : ${fmt(totalGeneral)} €`, margin, y);
     y += 6;
-    doc.setFontSize(8);
-    doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalFichesMois)} (fiches) + ${fmt(totalNotesMois)} (notes) − ${fmt(totalBkMois)} (BK)`;
+    doc.setFontSize(8); doc.setFont(undefined, 'normal');
+    const notesSignPDF = totalNotes >= 0 ? `+ ${fmt(totalNotes)}` : `- ${fmt(Math.abs(totalNotes))}`;
+    let formula = `${fmt(totalSalairesMois)} (sal.) - ${fmt(totalRetraitsMois)} (retraits) ${notesSignPDF} (notes) + ${fmt(totalRemb)} (remb.) - ${fmt(totalBk)} (BK)`;
     if (reportDuMoisPrecedent !== 0) formula += ` + ${fmt(reportDuMoisPrecedent)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
 
-    doc.save(`pierre-${selectedMois || 'fiches'}.pdf`);
+    doc.save('pierre-fiches.pdf');
   };
+
+  const renderFicheRow = (f) => (
+    <div key={f.id}>
+      {editId === f.id ? (
+        <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {['salaire', 'retrait'].map((t) => (
+              <button key={t}
+                className={editData.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
+                style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => setEditData({ ...editData, type: t })}
+              >{t === 'salaire' ? 'Salaire' : 'Retrait'}</button>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <input className="input-field" type="date" value={editData.date} onChange={(e) => setEditData({ ...editData, date: e.target.value })} />
+            {editData.type === 'retrait'
+              ? <input className="input-field" type="number" placeholder="Montant" value={editData.montantDirect} onChange={(e) => setEditData({ ...editData, montantDirect: e.target.value })} />
+              : <input className="input-field" type="number" placeholder="Heures" value={editData.heures} onChange={(e) => setEditData({ ...editData, heures: e.target.value })} />
+            }
+            <input className="input-field" value={editData.notes} onChange={(e) => setEditData({ ...editData, notes: e.target.value })} placeholder="Notes" />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={handleSaveEdit}>✓ Sauvegarder</button>
+            <button className="btn btn-secondary" onClick={() => setEditId(null)}>Annuler</button>
+          </div>
+        </div>
+      ) : (
+        <div className="row-hover nota-row" onClick={() => handleEdit(f)} style={{ cursor: 'pointer' }}>
+          <span style={{ width: 90, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
+          {f.type === 'salaire' && <span style={{ width: 50, fontSize: 12, color: '#6b7280' }}>{f.heures}h</span>}
+          <span style={{ flex: 1, fontWeight: 600 }}>{fmt(f.type === 'retrait' ? Math.abs(f.montant) : f.montant)} €</span>
+          {f.notes && <span style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>{f.notes}</span>}
+          <button className="delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }}>✕</button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="page-container">
@@ -330,10 +483,10 @@ export default function Pierre() {
           <div className="modal-box">
             <h3>Valider {fmtMois(selectedMois)}</h3>
             <p>
-              Total du mois : <strong>{fmt(totalGeneral)} €</strong>.{' '}
-              {totalGeneral < 0
-                ? `Une dette de ${fmt(totalGeneral)} € sera reportée au mois suivant.`
-                : 'Aucune dette à reporter.'}
+              {totalGeneral >= 0
+                ? <>Le solde est positif (<strong>{fmt(totalGeneral)} €</strong>). Le mois suivant (<strong>{fmtMois(nextMonth(selectedMois))}</strong>) commencera à <strong>0,00 €</strong>.</>
+                : <>La dette (<strong>{fmt(totalGeneral)} €</strong>) sera reportée comme solde de départ pour <strong>{fmtMois(nextMonth(selectedMois))}</strong>.</>
+              }
             </p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirmValider(false)}>Annuler</button>
@@ -363,21 +516,16 @@ export default function Pierre() {
       )}
 
       {reportDuMoisPrecedent !== 0 && (
-        <div style={{
-          background: reportDuMoisPrecedent < 0 ? '#fef2f2' : '#f0fdf4',
-          color: reportDuMoisPrecedent < 0 ? '#dc2626' : '#16a34a',
-          padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600,
-          borderLeft: reportDuMoisPrecedent < 0 ? '4px solid #dc2626' : '4px solid #16a34a',
-        }}>
-          Report mois précédent : {fmt(reportDuMoisPrecedent)} €
+        <div style={{ background: reportDuMoisPrecedent < 0 ? '#fef2f2' : '#f0fdf4', color: reportDuMoisPrecedent < 0 ? '#dc2626' : '#15803d', padding: '8px 16px', borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600, borderLeft: `4px solid ${reportDuMoisPrecedent < 0 ? '#dc2626' : '#16a34a'}` }}>
+          Report période précédente : {fmt(reportDuMoisPrecedent)} €
         </div>
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Pierre</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          {selectedMois && <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmValider(true)}>Valider le mois</button>}
           <button className="btn btn-danger" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
+          <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={handlePrint}>Imprimer</button>
           <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={exportPDF}>Export PDF</button>
         </div>
       </div>
@@ -399,79 +547,78 @@ export default function Pierre() {
                 }}
               >
                 {fmtMois(m)}
-                <span style={{ marginLeft: 6, fontWeight: 400, opacity: 0.8 }}>{fmt(moisMap[m].total)} €</span>
+                <span style={{ marginLeft: 6, fontWeight: 400, opacity: 0.8 }}>{fmt(moisMap[m].salaires)} €</span>
+                {moisMap[m].retraits > 0 && (
+                  <span style={{ marginLeft: 4, fontWeight: 400, opacity: 0.7, color: selectedMois === m ? '#fca5a5' : '#dc2626' }}>−{fmt(moisMap[m].retraits)} €</span>
+                )}
+                {monthReports[nextMonth(m)] !== undefined && (
+                  <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>✓</span>
+                )}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Fiches du mois sélectionné */}
+      {/* Fiches du mois sélectionné — deux colonnes */}
       {selectedMois && (
         <div className="card" style={{ borderTopLeftRadius: moisList.length > 0 ? 0 : undefined, borderTopRightRadius: moisList.length > 0 ? 0 : undefined, borderTop: moisList.length > 0 ? '1px solid #e5e7eb' : undefined }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ fontWeight: 700, color: '#1f2937' }}>{fmtMois(selectedMois)}</div>
-            {moisMap[selectedMois] && (
-              <button
-                className="btn btn-danger"
-                style={{ fontSize: 12, padding: '4px 10px' }}
-                onClick={() => setConfirmDeleteMois(selectedMois)}
-              >
-                Supprimer le mois
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {moisMap[selectedMois] && (
+                <>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => setConfirmValider(true)}
+                  >
+                    Valider le mois
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => setConfirmDeleteMois(selectedMois)}
+                  >
+                    Supprimer
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          {fichesOfMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune fiche ce mois</div>}
+          {/* Report du mois précédent si validé */}
+          {monthReports[selectedMois] !== undefined && (
+            <div style={{ background: monthReports[selectedMois] < 0 ? '#fef2f2' : '#f0fdf4', color: monthReports[selectedMois] < 0 ? '#dc2626' : '#15803d', padding: '6px 12px', borderRadius: 6, marginBottom: 10, fontSize: 13, fontWeight: 600 }}>
+              Report {fmtMois(/* previous month */ (() => { const [y, mo] = selectedMois.split('-').map(Number); return mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`; })())} : {fmt(monthReports[selectedMois])} €
+            </div>
+          )}
 
-          {[...fichesOfMois].sort((a, b) => b.date.localeCompare(a.date)).map((f) => (
-            <div key={f.id}>
-              {editId === f.id ? (
-                <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    {['salaire', 'retrait'].map((t) => (
-                      <button key={t}
-                        className={editData.type === t ? 'btn btn-primary' : 'btn btn-secondary'}
-                        style={{ fontSize: 12, padding: '4px 10px' }}
-                        onClick={() => setEditData({ ...editData, type: t })}
-                      >{t === 'salaire' ? 'Salaire' : 'Retrait'}</button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <input className="input-field" type="date" value={editData.date} onChange={(e) => setEditData({ ...editData, date: e.target.value })} />
-                    {editData.type === 'retrait'
-                      ? <input className="input-field" type="number" placeholder="Montant" value={editData.montantDirect} onChange={(e) => setEditData({ ...editData, montantDirect: e.target.value })} />
-                      : <input className="input-field" type="number" placeholder="Heures" value={editData.heures} onChange={(e) => setEditData({ ...editData, heures: e.target.value })} />
-                    }
-                    <input className="input-field" value={editData.notes} onChange={(e) => setEditData({ ...editData, notes: e.target.value })} placeholder="Notes" />
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-primary" onClick={handleSaveEdit}>✓ Sauvegarder</button>
-                    <button className="btn btn-secondary" onClick={() => setEditId(null)}>Annuler</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="row-hover nota-row" onClick={() => handleEdit(f)} style={{ cursor: 'pointer' }}>
-                  <span style={{ width: 90, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 10, marginRight: 6,
-                    background: f.type === 'retrait' ? '#fef2f2' : '#eff6ff',
-                    color: f.type === 'retrait' ? '#dc2626' : '#2563eb',
-                  }}>{f.type === 'retrait' ? 'Retrait' : 'Salaire'}</span>
-                  {f.type === 'salaire' && <span style={{ width: 50 }}>{f.heures}h</span>}
-                  <span style={{ flex: 1, fontWeight: 600, color: f.type === 'retrait' ? '#dc2626' : undefined }}>{fmt(f.montant)} €</span>
-                  {f.notes && <span style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>{f.notes}</span>}
-                  <button className="delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }}>✕</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* Colonne Salaires */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#15803d', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Salaires</div>
+              {salairesDuMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucun</div>}
+              {salairesDuMois.map(renderFicheRow)}
+              {salairesDuMois.length > 0 && (
+                <div style={{ marginTop: 8, fontWeight: 700, color: '#15803d', fontSize: 13 }}>
+                  Total : {fmt(totalSalairesMois)} €
                 </div>
               )}
             </div>
-          ))}
 
-          {fichesOfMois.length > 0 && (
-            <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
-              Total {fmtMois(selectedMois)} : {fmt(moisMap[selectedMois]?.total || 0)} €
+            {/* Colonne Retraits */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#dc2626', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Retraits (−)</div>
+              {retraitsDuMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucun</div>}
+              {retraitsDuMois.map(renderFicheRow)}
+              {retraitsDuMois.length > 0 && (
+                <div style={{ marginTop: 8, fontWeight: 700, color: '#dc2626', fontSize: 13 }}>
+                  Total : {fmt(totalRetraitsMois)} €
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -509,11 +656,6 @@ export default function Pierre() {
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>{heures}h × 10 = <strong>{fmt(parseFloat(heures) * 10)} €</strong></div>
           )}
           <button className="btn btn-primary" onClick={handleSaveFiche} style={{ width: '100%' }}>Enregistrer</button>
-          {fichesOfMois.length > 0 && (
-            <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
-              Total {fmtMois(selectedMois)} : {fmt(totalFichesMois)} €
-            </div>
-          )}
         </div>
 
         {/* Notes clients */}
@@ -532,7 +674,7 @@ export default function Pierre() {
               </div>
               <div>
                 <div className="label-sm">Montant</div>
-                <input className="input-field" type="number" placeholder="±0" value={noteForm.montant} onChange={(e) => setNoteForm({ ...noteForm, montant: e.target.value })} />
+                <input className="input-field" type="number" placeholder="0" value={noteForm.montant} onChange={(e) => setNoteForm({ ...noteForm, montant: e.target.value })} />
               </div>
             </div>
             <div style={{ marginBottom: 10 }}>
@@ -549,26 +691,50 @@ export default function Pierre() {
           </div>
 
           <div className="card">
-            <div className="card-title">Notes clients reçues</div>
-            <div className="blue-total" style={{ marginBottom: 14 }}>Total : {fmt(totalNotesMois)} €</div>
-            {notesOfMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>}
-            {notesOfMois.map((n) => (
-              <div key={n.id} className="nota-row">
-                <span style={{ flex: 1, fontSize: 13 }}>
-                  {n.personne} → Pierre ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-                </span>
-                <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
-              </div>
-            ))}
+            <div className="card-title">Notes clients reçues (−)</div>
+            <div className="blue-total" style={{ marginBottom: 14, background: totalNotes < 0 ? '#fef2f2' : undefined, color: totalNotes < 0 ? '#dc2626' : undefined }}>
+              Total : {fmt(totalNotes)} €
+            </div>
+            {(() => {
+              const notesDuMois = notesClients.filter((n) => (n.date || '').substring(0, 7) === selectedMois);
+              if (notesDuMois.length === 0) return <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note ce mois</div>;
+              return [...notesDuMois].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((n) => (
+                <div key={n.id} className="nota-row">
+                  <span style={{ flex: 1, fontSize: 13 }}>{n.personne} → Pierre ({fmtDate(n.date)})</span>
+                  <span style={{ fontWeight: 600, color: '#dc2626' }}>{fmt(n.montant)} €</span>
+                </div>
+              ));
+            })()}
           </div>
+
+          {rembFichesDuMois.length > 0 && (
+            <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
+              <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées (+)</div>
+              {rembFichesDuMois.map((f) => (
+                <div key={f.id} className="row-hover nota-row">
+                  <span style={{ flex: 1, fontSize: 13 }}>
+                    {f.notePersonne}
+                    <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                      {f.noteDate ? f.noteDate.split('-').reverse().join('/') : ''} — remb. {f.date ? f.date.split('-').reverse().join('/') : ''}
+                    </span>
+                  </span>
+                  <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(Math.abs(f.montant))} €</span>
+                  <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => { annulerRemboursement(f.noteId); load(); }}>↩</button>
+                </div>
+              ))}
+              <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
+                Total remboursements : {fmt(totalRemb)} €
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* BK */}
       <div className="card" style={{ borderLeft: '4px solid #ea580c' }}>
         <div className="card-title" style={{ color: '#ea580c' }}>Pour BK</div>
-        {bkOfMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée ce mois</div>}
-        {bkOfMois.map((f) => (
+        {bkFichesDuMois.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune entrée ce mois</div>}
+        {bkFichesDuMois.map((f) => (
           <div key={f.id} className="row-hover nota-row">
             <span style={{ flex: 1, color: '#6b7280', fontSize: 13 }}>{fmtDate(f.date)}</span>
             <span style={{ fontWeight: 600, color: '#ea580c' }}>{fmt(f.montant)} €</span>
@@ -576,34 +742,19 @@ export default function Pierre() {
           </div>
         ))}
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <input
-            className="input-field"
-            type="number"
-            placeholder="Montant BK..."
-            value={bkInput}
-            onChange={(e) => setBkInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddBk()}
-            style={{ flex: 1 }}
-          />
-          <input
-            className="input-field"
-            type="date"
-            value={bkDate}
-            onChange={(e) => setBkDate(e.target.value)}
-            style={{ width: 140 }}
-          />
+          <input className="input-field" type="date" value={bkDate} onChange={(e) => setBkDate(e.target.value)} style={{ width: 140 }} />
+          <input className="input-field" type="number" placeholder="Montant BK..." value={bkInput}
+            onChange={(e) => setBkInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddBk()} style={{ flex: 1 }} />
           <button className="btn" style={{ background: '#ea580c', color: 'white' }} onClick={handleAddBk}>+</button>
         </div>
-        <div style={{ marginTop: 10, fontWeight: 700, color: '#ea580c' }}>
-          Total BK : {fmt(totalBkMois)} €
-        </div>
+        <div style={{ marginTop: 10, fontWeight: 700, color: '#ea580c' }}>Total BK : {fmt(totalBk)} €</div>
       </div>
 
       {/* Total Général */}
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
-        Total Général{selectedMois ? ` ${fmtMois(selectedMois)}` : ''} : {fmt(totalGeneral)} €
+        Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalFichesMois)} (fiches) + {fmt(totalNotesMois)} (notes) − {fmt(totalBkMois)} (BK)
+          {fmt(totalSalairesMois)} (sal.) − {fmt(totalRetraitsMois)} (retraits) {totalNotes >= 0 ? `+ ${fmt(totalNotes)}` : `− ${fmt(Math.abs(totalNotes))}`} (notes) + {fmt(totalRemb)} (remb.) − {fmt(totalBk)} (BK)
           {reportDuMoisPrecedent !== 0 && ` + ${fmt(reportDuMoisPrecedent)} (report)`}
         </div>
       </div>

@@ -49,13 +49,17 @@ export default function Personne() {
   const bkFiches = fiches.filter((f) => f.personne_key === key && f.type === 'bk');
   // Cas 2 : fiches crédit générées par un remboursement d'une note d'une session passée
   const rembFiches = fiches.filter((f) => f.personne_key === key && f.type === 'remboursement_note');
+  // IDs des notes ayant une fiche remboursement — utilisés pour les exclure des notes actives
+  // (robuste même si la note a rembourse=false suite à un bug de sync Drive)
+  const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const notesRecues = notes.filter((n) => n.destinataire_key === key && !hidden.includes(n.id));
   // Cas 1 : notes actives remboursées pendant la session (annulee+rembourse, visibles sur fiche)
   const notesCase1 = notesRecues.filter((n) => n.rembourse && !n.etaitCacheeAvantRembourse);
   const notesRecuesAll = notes.filter((n) => n.destinataire_key === key);
 
   const totalSalaires = salaires.reduce((a, b) => a + b.montant, 0);
-  const totalNotes = notesRecues.filter((n) => !n.annulee).reduce((a, b) => a + b.montant, 0);
+  // Exclude notes that have a rembFiche (Cas 2) — their credit is already counted in totalRemb
+  const totalNotes = notesRecues.filter((n) => !n.annulee && !rembNoteIds.has(n.id)).reduce((a, b) => a + b.montant, 0);
   const totalBop = bopFiches.reduce((a, b) => a + b.montant, 0);
   const totalBk = bkFiches.reduce((a, b) => a + b.montant, 0);
   const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
@@ -95,6 +99,86 @@ export default function Personne() {
     load();
   };
 
+  const handlePrint = () => {
+    const nom = personne?.nom || key;
+    const activeNotes = notesRecues.filter((n) => !n.annulee && !n.rembourse && !rembNoteIds.has(n.id));
+    const row = (cells, cls = '') => `<tr class="${cls}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+    const rowH = (cells) => `<tr>${cells.map((c) => `<th>${c}</th>`).join('')}</tr>`;
+
+    const salairesRows = salaires.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('');
+    const noteRows = activeNotes.map((n) => row([n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'])).join('');
+    const case1Rows = notesCase1.map((n) => row([n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], 'barre')).join('');
+    const rembRows = rembFiches.map((f) => row([f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €'])).join('');
+
+    const bopSection = bopFiches.length ? `
+      <h3 class="bop-titre">BOP (déduit du total)</h3>
+      <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+        ${bopFiches.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('')}
+        ${row(['Total BOP', fmt(totalBop) + ' €'], 'total-row')}
+      </tbody></table>` : '';
+
+    const bkSection = bkFiches.length ? `
+      <h3 class="bk-titre">BK (déduit du total)</h3>
+      <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+        ${bkFiches.map((f) => row([fmtDate(f.date), fmt(f.montant) + ' €'])).join('')}
+        ${row(['Total BK', fmt(totalBk) + ' €'], 'total-row')}
+      </tbody></table>` : '';
+
+    const formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) − ${fmt(totalBop)} (BOP) − ${fmt(totalBk)} (BK)${dette !== 0 ? ` + ${fmt(dette)} (report)` : ''} = ${fmt(totalGeneral)} €`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${nom}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:9pt;padding:12mm;color:#000}
+  h1{font-size:13pt;margin-bottom:6px}
+  .dette{color:#dc2626;font-weight:700;margin-bottom:8px;font-size:9pt}
+  .deux-cols{display:flex;gap:14px;margin-bottom:12px;align-items:flex-start}
+  .col{flex:1}
+  .col-titre{font-size:8pt;font-weight:700;margin-bottom:3px}
+  table{border-collapse:collapse;width:100%;margin-bottom:6px}
+  td,th{border:1px solid #555;padding:2px 5px;font-size:8pt}
+  th{background:#f0f0f0;font-weight:700;text-align:left}
+  .total-row td{font-weight:700}
+  .barre td{color:#999;text-decoration:line-through}
+  .remb-titre td{color:#2563eb;font-weight:700;background:#eff6ff}
+  .bop-titre{color:#dc2626;font-size:9pt;font-weight:700;margin:10px 0 3px}
+  .bk-titre{color:#ea580c;font-size:9pt;font-weight:700;margin:10px 0 3px}
+  .grand-total{font-size:13pt;font-weight:700;margin-top:12px}
+  .formule{font-size:7.5pt;color:#555;margin-top:3px}
+  .bop-global{color:#dc2626;margin-top:8px;font-size:9pt}
+  @media print{@page{size:A4 portrait;margin:10mm}body{padding:0}}
+</style></head><body>
+<h1>${nom}</h1>
+${dette < 0 ? `<p class="dette">Report période précédente : ${fmt(dette)} €</p>` : ''}
+<div class="deux-cols">
+  <div class="col">
+    <div class="col-titre">Salaires</div>
+    <table><thead>${rowH(['Date', 'Montant'])}</thead><tbody>
+      ${salairesRows}
+      ${row(['Total', fmt(totalSalaires) + ' €'], 'total-row')}
+    </tbody></table>
+  </div>
+  <div class="col">
+    <div class="col-titre">Notes clients reçues</div>
+    <table><thead>${rowH(['Client', 'Date', 'Montant'])}</thead><tbody>
+      ${noteRows}${case1Rows}
+      ${row(['Total notes', '', fmt(totalNotes) + ' €'], 'total-row')}
+      ${rembFiches.length ? `<tr class="remb-titre"><td colspan="3">Notes remboursées</td></tr>${rembRows}${row(['Total remb.', '', '+' + fmt(totalRemb) + ' €'], 'total-row')}` : ''}
+    </tbody></table>
+  </div>
+</div>
+${bopSection}${bkSection}
+<p class="grand-total">Total Général : ${fmt(totalGeneral)} €</p>
+<p class="formule">${formula}</p>
+${bopGlobal !== 0 ? `<p class="bop-global">BOP total : ${fmt(bopGlobal)} €</p>` : ''}
+<script>window.onload=()=>window.print();</script>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  };
+
   const exportPDF = () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const margin = 12;
@@ -129,10 +213,11 @@ export default function Personne() {
     const rightX = leftX + leftW + 8;
     const rightCols = [{ header: 'Client', w: 44 }, { header: 'Date', w: 22 }, { header: 'Montant', w: 26 }];
 
-    const drawRow = (startX, cols, cy, cells, bold = false) => {
+    const drawRow = (startX, cols, cy, cells, bold = false, strikethrough = false) => {
       let x = startX;
       doc.setFont(undefined, bold ? 'bold' : 'normal');
       doc.setFontSize(bold ? 8.5 : 8);
+      if (strikethrough) doc.setTextColor(150, 150, 150);
       cols.forEach((col, i) => {
         doc.rect(x, cy, col.w, rowH);
         const val = cells[i];
@@ -141,9 +226,15 @@ export default function Personne() {
           const maxW = col.w - 2;
           while (doc.getTextWidth(txt) > maxW && txt.length > 1) txt = txt.slice(0, -1);
           doc.text(txt, x + 1.2, cy + rowH - 1.8);
+          if (strikethrough) {
+            const tw = Math.min(doc.getTextWidth(String(val)), maxW);
+            doc.setLineWidth(0.3);
+            doc.line(x + 1.2, cy + rowH / 2, x + 1.2 + tw, cy + rowH / 2);
+          }
         }
         x += col.w;
       });
+      if (strikethrough) doc.setTextColor(0, 0, 0);
     };
 
     // Section labels above tables
@@ -169,15 +260,37 @@ export default function Personne() {
     drawRow(leftX, leftCols, leftY, ['Total', fmt(totalSalaires) + ' €'], true);
     leftY += rowH;
 
-    // Notes clients rows
-    const activeNotes = notesRecues.filter((n) => !n.annulee);
+    // Notes clients rows — actives normales + Case 1 barrées
+    const activeNotes = notesRecues.filter((n) => !n.annulee && !n.rembourse && !rembNoteIds.has(n.id));
     activeNotes.forEach((n) => {
       drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €']);
       rightY += rowH;
     });
+    notesCase1.forEach((n) => {
+      drawRow(rightX, rightCols, rightY, [n.personne || '', fmtDate(n.date), fmt(n.montant) + ' €'], false, true);
+      rightY += rowH;
+    });
     // Notes total
-    drawRow(rightX, rightCols, rightY, ['Total', '', fmt(totalNotes) + ' €'], true);
+    drawRow(rightX, rightCols, rightY, ['Total notes', '', fmt(totalNotes) + ' €'], true);
     rightY += rowH;
+
+    // Notes remboursées (Case 2 uniquement : crédits session passée)
+    if (rembFiches.length > 0) {
+      doc.setFontSize(7.5);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(37, 99, 235);
+      doc.text('Notes remboursées', rightX + 1, rightY + rowH - 2);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      doc.rect(rightX, rightY, rightCols.reduce((a, c) => a + c.w, 0), rowH);
+      rightY += rowH;
+      rembFiches.forEach((f) => {
+        drawRow(rightX, rightCols, rightY, [f.notePersonne || '', fmtDate(f.noteDate || f.date), '+' + fmt(Math.abs(f.montant)) + ' €']);
+        rightY += rowH;
+      });
+      drawRow(rightX, rightCols, rightY, ['Total remb.', '', '+' + fmt(totalRemb) + ' €'], true);
+      rightY += rowH;
+    }
 
     y = Math.max(leftY, rightY) + 8;
 
@@ -225,7 +338,7 @@ export default function Personne() {
     y += 6;
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
-    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) - ${fmt(totalBop)} (BOP) - ${fmt(totalBk)} (BK)`;
+    let formula = `${fmt(totalSalaires)} (sal.) + ${fmt(totalNotes)} (notes) + ${fmt(totalRemb)} (remb.) - ${fmt(totalBop)} (BOP) - ${fmt(totalBk)} (BK)`;
     if (dette !== 0) formula += ` + ${fmt(dette)} (report)`;
     formula += ` = ${fmt(totalGeneral)} €`;
     doc.text(formula, margin, y);
@@ -396,7 +509,8 @@ export default function Personne() {
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>{personne.nom}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={() => setConfirmReset(true)}>Réinitialiser</button>
-          <button className="btn btn-primary" onClick={exportPDF}>Export PDF</button>
+          <button className="btn btn-primary" onClick={handlePrint}>Imprimer</button>
+          <button className="btn btn-secondary" onClick={exportPDF}>Export PDF</button>
           <button className="btn btn-secondary" onClick={exportWord}>Export Word</button>
           <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={() => setConfirmArchive(true)} title="Archiver en ancien serveur">👴</button>
           <button className="btn btn-danger" style={{ fontSize: 13 }} onClick={() => setConfirmSupprimer(true)} title="Supprimer la personne">✕</button>
@@ -427,65 +541,56 @@ export default function Personne() {
             {showAnnulees ? 'Masquer annulées' : 'Voir annulées'}
           </button>
         </div>
-        {notesRecues.filter((n) => {
-          if (n.rembourse && !n.etaitCacheeAvantRembourse) return true; // même session : barré
-          if (n.rembourse) return false; // session passée : dans la section remboursements
-          if (n.annulee) return showAnnulees;
-          return true;
-        }).length === 0 && (
+        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse && !rembNoteIds.has(n.id)).length === 0 && (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>Aucune note</div>
         )}
-        {notesRecues.filter((n) => {
-          if (n.rembourse && !n.etaitCacheeAvantRembourse) return true;
-          if (n.rembourse) return false;
-          if (n.annulee) return showAnnulees;
-          return true;
-        }).map((n) => {
-          const barrée = n.rembourse && !n.etaitCacheeAvantRembourse;
-          return (
-            <div key={n.id} className="row-hover nota-row" style={{ opacity: barrée ? 0.55 : (n.annulee ? 0.5 : 1) }}>
-              <span style={{ flex: 1, fontSize: 13, textDecoration: barrée ? 'line-through' : 'none' }}>
-                {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
-                {barrée && (
-                  <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}>
-                    remb.{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}
-                  </span>
-                )}
-                {n.annulee && !barrée && <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>}
-              </span>
-              <span style={{ fontWeight: 600, color: barrée ? '#9ca3af' : (n.montant < 0 ? '#dc2626' : '#16a34a'), textDecoration: barrée ? 'line-through' : 'none' }}>
-                {fmt(n.montant)} €
-              </span>
-              {!barrée && <button className="delete-btn" onClick={() => handleHideNote(n.id)}>✕</button>}
-              {barrée && (
-                <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(n.id)}>↩</button>
-              )}
-            </div>
-          );
-        })}
+        {notesRecues.filter((n) => (!n.annulee || showAnnulees) && !n.rembourse && !rembNoteIds.has(n.id)).map((n) => (
+          <div key={n.id} className="row-hover nota-row" style={{ opacity: n.annulee ? 0.5 : 1 }}>
+            <span style={{ flex: 1, fontSize: 13 }}>
+              {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
+              {n.annulee && <span style={{ marginLeft: 8, fontSize: 11, color: '#dc2626' }}>annulée</span>}
+            </span>
+            <span style={{ fontWeight: 600, color: n.montant < 0 ? '#dc2626' : '#16a34a' }}>{fmt(n.montant)} €</span>
+            <button className="delete-btn" onClick={() => handleHideNote(n.id)}>✕</button>
+          </div>
+        ))}
         <div style={{ marginTop: 10, fontWeight: 700, color: totalNotes >= 0 ? '#16a34a' : '#dc2626' }}>
           Total notes : {fmt(totalNotes)} €
         </div>
       </div>
 
       {/* Notes remboursées */}
-      {rembFiches.length > 0 && (
+      {(notesCase1.length > 0 || rembFiches.length > 0) && (
         <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
-          <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées (sessions passées)</div>
+          <div className="card-title" style={{ color: '#2563eb' }}>Notes remboursées</div>
+          {/* Cas 1 : note active annulée par remboursement pendant la session */}
+          {notesCase1.map((n) => (
+            <div key={n.id} className="row-hover nota-row">
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {n.personne} → nous ({n.date ? n.date.substring(5, 7) + '/' + n.date.substring(2, 4) : ''})
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                  remboursée{n.rembourseDate ? ' ' + n.rembourseDate.split('-').reverse().join('/') : ''}
+                </span>
+              </span>
+              <span style={{ fontWeight: 600, color: '#6b7280' }}>{fmt(n.montant)} € (soldée)</span>
+              <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(n.id)}>↩</button>
+            </div>
+          ))}
+          {/* Cas 2 : crédit issu d'un remboursement d'une note de session passée */}
           {rembFiches.map((f) => (
             <div key={f.id} className="row-hover nota-row">
               <span style={{ flex: 1, fontSize: 13 }}>
-                {f.notePersonne} ({f.noteDate ? f.noteDate.substring(8, 10) + '/' + f.noteDate.substring(5, 7) : ''})
+                {f.notePersonne}
                 <span style={{ marginLeft: 8, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
-                  remboursé {f.date ? f.date.split('-').reverse().join('/') : ''}
+                  {f.noteDate ? f.noteDate.split('-').reverse().join('/') : ''} — remb. {f.date ? f.date.split('-').reverse().join('/') : ''}
                 </span>
               </span>
-              <span style={{ fontWeight: 600, color: '#16a34a' }}>+{fmt(Math.abs(f.montant))} €</span>
+              <span style={{ fontWeight: 600, color: '#2563eb' }}>+{fmt(Math.abs(f.montant))} €</span>
               <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} title="Annuler le remboursement" onClick={() => handleAnnulerRemboursement(f.noteId)}>↩</button>
             </div>
           ))}
-          <div style={{ marginTop: 10, fontWeight: 700, color: '#16a34a' }}>
-            Total remboursements : +{fmt(totalRemb)} €
+          <div style={{ marginTop: 10, fontWeight: 700, color: '#2563eb' }}>
+            Total remboursements : {fmt(totalRemb)} €
           </div>
         </div>
       )}
@@ -573,8 +678,7 @@ export default function Personne() {
       <div className="blue-total" style={{ fontSize: 18, padding: '16px 20px' }}>
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes) - {fmt(totalBop)} (BOP) - {fmt(totalBk)} (BK)
-          {totalRemb !== 0 && ` + ${fmt(totalRemb)} (remb.)`}
+          {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes){totalRemb > 0 ? ` + ${fmt(totalRemb)} (remb.)` : ''} - {fmt(totalBop)} (BOP) - {fmt(totalBk)} (BK)
           {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>

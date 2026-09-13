@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret, getAncienServeurs, addAncienServeurEntry } from '../db';
+import { addFiche, addPersonne, addNote, getNotes, rembourserNote, getPersonnes, addFichePierre, slugify, addPret, deleteFiche, deleteFichePierre, deleteNote, getAncienServeurs, addAncienServeurEntry } from '../db';
 
 const today = () => new Date().toISOString().split('T')[0];
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,6 +27,8 @@ export default function Calculator() {
   const [pretForm, setPretForm] = useState({ type: 'emprunt', produit: '', nombre: '1', lieu: '', date: today() });
   const [sessionPrets, setSessionPrets] = useState([]);
   const [allNotes, setAllNotes] = useState([]);
+  const [lastSavedRow, setLastSavedRow] = useState({});
+  const [lastSavedNote, setLastSavedNote] = useState({});
   const [rembLines, setRembLines] = useState([
     { search: '', showDropdown: false, selectedNote: null, date: today() },
   ]);
@@ -60,7 +62,7 @@ export default function Calculator() {
 
   const handleSaveBop = () => {
     if (!bopForm.serveur_key || !bopForm.montant) return;
-    const server = personnesList.find((s) => s.key === bopForm.serveur_key);
+    const server = serverOptions.find((s) => s.key === bopForm.serveur_key);
     if (!server) return;
     const montant = parseFloat(bopForm.montant);
     if (!montant) return;
@@ -94,16 +96,25 @@ export default function Calculator() {
     const p = personRows[i];
     const nom = p.isNew ? p.nom : p.nom;
     if (!nom || !p.date) return;
-    // Pierre a son propre système de fiches — ne pas l'ajouter aux serveurs normaux
     if (p.key === 'pierre' || slugify(nom) === 'pierre') {
-      addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
+      const id = addFichePierre({ date: p.date, heures: parseFloat(p.valeur) || 0, type: 'salaire' });
+      setLastSavedRow((prev) => ({ ...prev, [i]: { id, type: 'pierre', label: `Pierre — ${parseFloat(p.valeur) || 0}h — ${p.date.split('-').reverse().join('/')}` } }));
       flashRowMsg(i, '✓ Fiche Pierre sauvegardée');
       return;
     }
     const personne = addPersonne(nom);
-    addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
+    const id = addFiche(personne.key, personne.nom, p.date, personneResults[i], 'salaire');
+    setLastSavedRow((prev) => ({ ...prev, [i]: { id, type: 'fiche', label: `${personne.nom} — ${fmt(personneResults[i])} € — ${p.date.split('-').reverse().join('/')}` } }));
     setPersonnesList(getPersonnes());
     flashRowMsg(i, `✓ Sauvegardé: ${personne.nom}`);
+  };
+
+  const handleUndoRow = (i) => {
+    const saved = lastSavedRow[i];
+    if (!saved) return;
+    if (saved.type === 'pierre') deleteFichePierre(saved.id);
+    else deleteFiche(saved.id);
+    setLastSavedRow((prev) => { const n = { ...prev }; delete n[i]; return n; });
   };
 
   const handleSaveNote = (i) => {
@@ -121,7 +132,18 @@ export default function Calculator() {
       date: line.date || today(),
     });
     setSessionNotes((prev) => [note, ...prev]);
+    setAllNotes(getNotes());
+    setLastSavedNote((prev) => ({ ...prev, [i]: { id: note.id, label: `${note.personne} → ${dest.nom} — ${fmt(montant)} €` } }));
     flashMsg('✓ Note enregistrée');
+  };
+
+  const handleUndoNote = (i) => {
+    const saved = lastSavedNote[i];
+    if (!saved) return;
+    deleteNote(saved.id);
+    setAllNotes(getNotes());
+    setSessionNotes((prev) => prev.filter((n) => n.id !== saved.id));
+    setLastSavedNote((prev) => { const n = { ...prev }; delete n[i]; return n; });
   };
 
   const addNoteLine = () => {
@@ -356,7 +378,8 @@ export default function Calculator() {
                 <div>
                   <div className="label-sm">Valeur</div>
                   <input className="input-field" type="number" placeholder="0" value={p.valeur}
-                    onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)} />
+                    onChange={(e) => updatePersonRow(i, 'valeur', e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveFiche(i)} />
                 </div>
                 <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveFiche(i)} title="Sauvegarder">💾</button>
                 <button className="btn btn-danger" style={{ padding: '8px 4px', fontSize: 12 }} onClick={() => removePersonRow(i)} title="Supprimer">✕</button>
@@ -368,6 +391,12 @@ export default function Calculator() {
               {rowMsgs[i] && (
                 <div style={{ marginTop: 4, textAlign: 'right', fontSize: 12, color: '#065f46', background: '#d1fae5', borderRadius: 6, padding: '3px 10px' }}>
                   {rowMsgs[i]}
+                </div>
+              )}
+              {lastSavedRow[i] && (
+                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 10px' }}>
+                  <span style={{ flex: 1, color: '#15803d' }}>✓ {lastSavedRow[i].label}</span>
+                  <button onClick={() => handleUndoRow(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
                 </div>
               )}
             </div>
@@ -388,11 +417,14 @@ export default function Calculator() {
                     onChange={(e) => updateNote(i, 'personne', e.target.value)} />
                 </div>
                 <div>
-                  <div className="label-sm">Montant <span style={{ color: '#dc2626', fontWeight: 700 }}>−</span></div>
-                  <input className="input-field" type="number" placeholder="0" value={line.montant}
-                    min="0"
-                    onChange={(e) => updateNote(i, 'montant', e.target.value)}
-                    style={{ color: '#dc2626' }} />
+                  <div className="label-sm">Montant</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>−</span>
+                    <input className="input-field" type="number" placeholder="0" value={line.montant}
+                      onChange={(e) => updateNote(i, 'montant', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveNote(i)}
+                      style={{ flex: 1 }} />
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 36px', gap: 8, alignItems: 'end' }}>
@@ -412,6 +444,12 @@ export default function Calculator() {
                 </div>
                 <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={() => handleSaveNote(i)} title="Sauvegarder">💾</button>
               </div>
+              {lastSavedNote[i] && (
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 10px' }}>
+                  <span style={{ flex: 1, color: '#15803d' }}>✓ {lastSavedNote[i].label}</span>
+                  <button onClick={() => handleUndoNote(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 7px', cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
+                </div>
+              )}
             </div>
           ))}
           <button className="btn btn-secondary" onClick={addNoteLine} style={{ marginBottom: 14 }}>+ Ajouter une ligne</button>
@@ -478,22 +516,12 @@ export default function Calculator() {
                 <button className="btn btn-primary" style={{ padding: '8px 6px', background: line.selectedNote ? '#dc2626' : undefined, opacity: line.selectedNote ? 1 : 0.5 }}
                   onClick={() => handleSaveRemb(i)} title="Confirmer remboursement">💾</button>
               </div>
-              {line.selectedNote && (() => {
-                const noteMonth = line.selectedNote.date?.substring(0, 7);
-                const rembMonth = line.date?.substring(0, 7);
-                const crossMonth = noteMonth && rembMonth && noteMonth !== rembMonth;
-                return (
-                  <div style={{ marginTop: 5, fontSize: 11, padding: '4px 8px', background: crossMonth ? '#fffbeb' : '#fef2f2', borderRadius: 6, color: crossMonth ? '#92400e' : '#991b1b', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{line.selectedNote.personne} → {line.selectedNote.destinataire_nom}</span>
-                    <strong>
-                      {fmt(line.selectedNote.montant)} € →{' '}
-                      {crossMonth
-                        ? `contre-note +${fmt(-line.selectedNote.montant)} € en ${rembMonth?.substring(5, 7)}/${rembMonth?.substring(2, 4)}`
-                        : 'sera annulée'}
-                    </strong>
-                  </div>
-                );
-              })()}
+              {line.selectedNote && (
+                <div style={{ marginTop: 5, fontSize: 11, padding: '4px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{line.selectedNote.personne} → {line.selectedNote.destinataire_nom}</span>
+                  <strong>{fmt(line.selectedNote.montant)} € → sera annulée</strong>
+                </div>
+              )}
             </div>
           ))}
           <button className="btn btn-secondary" onClick={addRembLine} style={{ marginBottom: 14, fontSize: 12 }}>+ Remboursement</button>
@@ -525,24 +553,24 @@ export default function Calculator() {
         </div>
       </div>
 
-      {/* BOP — Serveurs actifs */}
+      {/* BOP */}
       <div className="card">
         <div className="card-title">BOP</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 130px 36px', gap: 8, alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
           <div>
             <div className="label-sm">Serveur</div>
-            <select className="input-field" value={bopForm.serveur_key}
-              onChange={(e) => setBopForm({ ...bopForm, serveur_key: e.target.value })}>
-              <option value="">— choisir —</option>
-              {personnesList.filter((p) => p.key !== 'pierre').map((p) => (
-                <option key={p.key} value={p.key}>{p.nom}</option>
+            <select className="input-field" value={bopForm.serveur_key} onChange={(e) => setBopForm({ ...bopForm, serveur_key: e.target.value })}>
+              <option value="">— Choisir —</option>
+              {serverOptions.map((s) => (
+                <option key={s.key} value={s.key}>{s.nom}</option>
               ))}
             </select>
           </div>
           <div>
-            <div className="label-sm">Montant (€)</div>
-            <input className="input-field" type="number" step="0.01" placeholder="0.00"
-              value={bopForm.montant} onChange={(e) => setBopForm({ ...bopForm, montant: e.target.value })} />
+            <div className="label-sm">Montant</div>
+            <input className="input-field" type="number" placeholder="0" value={bopForm.montant}
+              onChange={(e) => setBopForm({ ...bopForm, montant: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveBop()} />
           </div>
           <div>
             <div className="label-sm">Date</div>
@@ -552,36 +580,36 @@ export default function Calculator() {
           <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveBop} title="Sauvegarder">💾</button>
         </div>
         {sessionBops.length > 0 && (
-          <div style={{ background: '#f0fdf4', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
             <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
             {sessionBops.map((b) => (
               <div key={b.id} className="nota-row">
-                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.montant} €</span>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>{b.date}</span>
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
+                <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* BOP — Anciens serveurs */}
+      {/* BOP Anciens Serveurs */}
       <div className="card">
-        <div className="card-title">BOP — Anciens serveurs</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 130px 36px', gap: 8, alignItems: 'end' }}>
+        <div className="card-title">BOP — Anciens Serveurs</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 36px', gap: 8, alignItems: 'end' }}>
           <div>
             <div className="label-sm">Serveur</div>
-            <select className="input-field" value={ancienBopForm.serveur_key}
-              onChange={(e) => setAncienBopForm({ ...ancienBopForm, serveur_key: e.target.value })}>
-              <option value="">— choisir —</option>
+            <select className="input-field" value={ancienBopForm.serveur_key} onChange={(e) => setAncienBopForm({ ...ancienBopForm, serveur_key: e.target.value })}>
+              <option value="">— Choisir —</option>
               {ancienServeursList.map((s) => (
                 <option key={s.key} value={s.key}>{s.nom}</option>
               ))}
             </select>
           </div>
           <div>
-            <div className="label-sm">Montant (€)</div>
-            <input className="input-field" type="number" step="0.01" placeholder="0.00"
-              value={ancienBopForm.montant} onChange={(e) => setAncienBopForm({ ...ancienBopForm, montant: e.target.value })} />
+            <div className="label-sm">Montant</div>
+            <input className="input-field" type="number" placeholder="0" value={ancienBopForm.montant}
+              onChange={(e) => setAncienBopForm({ ...ancienBopForm, montant: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveAncienBop()} />
           </div>
           <div>
             <div className="label-sm">Date</div>
@@ -591,12 +619,12 @@ export default function Calculator() {
           <button className="btn btn-primary" style={{ padding: '8px 6px' }} onClick={handleSaveAncienBop} title="Sauvegarder">💾</button>
         </div>
         {sessionAncienBops.length > 0 && (
-          <div style={{ background: '#f0fdf4', padding: '10px', borderRadius: 8, marginTop: 14 }}>
+          <div style={{ background: '#f0f9ff', padding: '10px', borderRadius: 8, marginTop: 14 }}>
             <div className="label-sm" style={{ marginBottom: 6 }}>ENREGISTRÉS (SESSION)</div>
             {sessionAncienBops.map((b) => (
               <div key={b.id} className="nota-row">
-                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.montant} €</span>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>{b.date}</span>
+                <span style={{ flex: 1, fontSize: 13 }}>{b.nom} — {b.date.split('-').reverse().join('/')}</span>
+                <span style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(parseFloat(b.montant))} €</span>
               </div>
             ))}
           </div>

@@ -12,21 +12,6 @@ function scheduleDriveSync() {
   syncTimer = setTimeout(driveSyncCallback, 2000);
 }
 
-// Upload immediately — used after destructive operations like reset
-function forceDriveSync() {
-  if (!driveSyncCallback) return;
-  clearTimeout(syncTimer);
-  driveSyncCallback();
-}
-
-// Merge arrays by id: keep remote + local-only entries not yet in remote
-function mergeById(local, remote) {
-  if (!Array.isArray(remote) || !remote.length) return local || [];
-  if (!local?.length) return remote;
-  const remoteIds = new Set(remote.map((x) => x.id));
-  return [...remote, ...local.filter((x) => !remoteIds.has(x.id))];
-}
-
 export function getAllData() {
   return {
     personnes: getPersonnes(),
@@ -44,33 +29,99 @@ export function getAllData() {
   };
 }
 
+// Merge two arrays by id: local entries not in remote are kept (prevents data loss on refresh)
+function mergeById(local, remote) {
+  if (!remote?.length) return local || [];
+  if (!local?.length) return remote;
+  const remoteIds = new Set(remote.map((x) => x.id));
+  const localOnly = local.filter((x) => !remoteIds.has(x.id));
+  return [...remote, ...localOnly];
+}
+
+function mergeByKey(local, remote) {
+  if (!remote?.length) return local || [];
+  if (!local?.length) return remote;
+  const remoteKeys = new Set(remote.map((x) => x.key));
+  const localOnly = local.filter((x) => !remoteKeys.has(x.key));
+  return [...remote, ...localOnly];
+}
+
 export function setAllData(data) {
+  const localResetAt = Number(localStorage.getItem('resetAt') || 0);
+  const driveResetAt = Number(data?.resetAt || 0);
+  // If Drive was reset more recently than local, take Drive arrays as-is (don't merge old local data back)
+  const driveIsNewer = driveResetAt > localResetAt;
+
   if (data?.personnes !== undefined) {
-    // Merge: never drop a server that exists locally but not in Drive
-    const local = getPersonnes();
-    const driveKeys = new Set(data.personnes.map((p) => p.key));
-    const merged = [...data.personnes];
-    local.forEach((p) => { if (!driveKeys.has(p.key)) merged.push(p); });
-    localStorage.setItem('personnes', JSON.stringify(merged));
+    localStorage.setItem('personnes', JSON.stringify(mergeByKey(getPersonnes(), data.personnes)));
   }
-  if (data?.fiches !== undefined) localStorage.setItem('fiches', JSON.stringify(data.fiches));
-  if (data?.notes !== undefined) localStorage.setItem('notes', JSON.stringify(data.notes));
-  // hiddenNotes: union — a hidden note stays hidden on all devices
-  if (data?.hiddenNotes !== undefined) {
-    const merged = [...new Set([...getHiddenNotes(), ...data.hiddenNotes])];
-    localStorage.setItem('hiddenNotes', JSON.stringify(merged));
+  if (data?.fiches !== undefined) {
+    localStorage.setItem('fiches', JSON.stringify(
+      driveIsNewer ? (data.fiches || []) : mergeById(getFiches(), data.fiches)
+    ));
   }
-  if (data?.fichesPierre !== undefined) localStorage.setItem('fichesPierre', JSON.stringify(data.fichesPierre));
-  if (data?.prets !== undefined) localStorage.setItem('prets', JSON.stringify(data.prets));
-  if (data?.dettes !== undefined) localStorage.setItem('dettes', JSON.stringify(data.dettes));
-  if (data?.bopGlobaux !== undefined) localStorage.setItem('bopGlobaux', JSON.stringify(data.bopGlobaux));
-  if (data?.ancienServeurs !== undefined) localStorage.setItem('ancienServeurs', JSON.stringify(data.ancienServeurs));
-  // ancienServeurEntries: merge so entries added on another device are not lost
+  if (data?.notes !== undefined) {
+    localStorage.setItem('notes', JSON.stringify(
+      driveIsNewer ? (data.notes || []) : mergeById(getNotes(), data.notes)
+    ));
+  }
+  if (data?.fichesPierre !== undefined) {
+    localStorage.setItem('fichesPierre', JSON.stringify(
+      driveIsNewer ? (data.fichesPierre || []) : mergeById(getFichesPierre(), data.fichesPierre)
+    ));
+  }
+  if (data?.prets !== undefined) {
+    localStorage.setItem('prets', JSON.stringify(mergeById(getPrets(), data.prets)));
+  }
   if (data?.ancienServeurEntries !== undefined) {
     localStorage.setItem('ancienServeurEntries', JSON.stringify(mergeById(getAncienServeurEntries(), data.ancienServeurEntries)));
   }
-  if (data?.pierreMonthReports !== undefined) localStorage.setItem('pierreMonthReports', JSON.stringify(data.pierreMonthReports));
+  if (data?.ancienServeurs !== undefined) {
+    localStorage.setItem('ancienServeurs', JSON.stringify(mergeByKey(getAncienServeurs(), data.ancienServeurs)));
+  }
+  if (data?.dettes !== undefined) {
+    localStorage.setItem('dettes', JSON.stringify(
+      driveIsNewer ? (data.dettes || {}) : { ...data.dettes, ...getDettes() }
+    ));
+  }
+  if (data?.bopGlobaux !== undefined) {
+    localStorage.setItem('bopGlobaux', JSON.stringify(
+      driveIsNewer ? (data.bopGlobaux || {}) : { ...data.bopGlobaux, ...getBopGlobaux() }
+    ));
+  }
+  // hiddenNotes: toujours union (une note cachée reste cachée)
+  if (data?.hiddenNotes !== undefined) {
+    localStorage.setItem('hiddenNotes', JSON.stringify([...new Set([...getHiddenNotes(), ...data.hiddenNotes])]));
+  }
+  if (data?.pierreMonthReports !== undefined) {
+    localStorage.setItem('pierreMonthReports', JSON.stringify(
+      driveIsNewer ? (data.pierreMonthReports || {}) : { ...data.pierreMonthReports, ...getPierreMonthReports() }
+    ));
+  }
+  if (driveIsNewer) {
+    localStorage.setItem('resetAt', String(driveResetAt));
+  }
   reconcilePersonnes();
+  reconcileRemboursements();
+}
+
+// Cross-reference notes with rembFiches to auto-fix rembourse=false inconsistencies (Drive sync race)
+export function reconcileRemboursements() {
+  const allFiches = [...getFiches(), ...getFichesPierre()];
+  const rembNoteIds = new Set(
+    allFiches.filter((f) => f.type === 'remboursement_note').map((f) => f.noteId).filter(Boolean)
+  );
+  if (rembNoteIds.size === 0) return;
+  const notes = getNotes();
+  let changed = false;
+  notes.forEach((n) => {
+    if (rembNoteIds.has(n.id) && !n.rembourse) {
+      n.rembourse = true;
+      n.etaitCacheeAvantRembourse = true;
+      changed = true;
+    }
+  });
+  if (changed) saveNotes(notes);
 }
 
 // Ensure every server referenced in notes has a personne entry
@@ -146,6 +197,7 @@ export function addFiche(personne_key, personne_nom, date, montant, type) {
   if (type === 'bop') {
     setBopGlobal(personne_key, getBopGlobal(personne_key) + Number(montant));
   }
+  if (driveSyncCallback) driveSyncCallback();
   return id;
 }
 
@@ -156,6 +208,7 @@ export function deleteFiche(id) {
   if (fiche?.type === 'bop') {
     setBopGlobal(fiche.personne_key, getBopGlobal(fiche.personne_key) - fiche.montant);
   }
+  if (driveSyncCallback) driveSyncCallback();
 }
 
 export function deletePersonneData(key) {
@@ -236,17 +289,20 @@ export function setBopGlobal(key, val) {
 }
 
 // Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
-// Debt = total général complet (salaires + notes - BOP - BK + dette précédente).
+// Debt = total général complet (salaires + notes + remb - BOP - BK + dette précédente).
 export function resetServeur(key) {
   const allFiches = getFiches().filter((f) => f.personne_key === key);
   const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
   const totalBop = allFiches.filter((f) => f.type === 'bop').reduce((a, b) => a + b.montant, 0);
   const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
+  const rembFiches = allFiches.filter((f) => f.type === 'remboursement_note');
+  const totalRemb = rembFiches.reduce((a, b) => a + Math.abs(b.montant), 0);
+  const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
-    .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id))
+    .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id) && !rembNoteIds.has(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
+  const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) + (totalRemb || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
 
   const dettes = getDettes();
   if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
@@ -263,7 +319,7 @@ export function resetServeur(key) {
   notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
   localStorage.setItem('resetAt', String(Date.now()));
-  forceDriveSync();
+  scheduleDriveSync();
 }
 
 export function resetAllServeurs() {
@@ -272,6 +328,7 @@ export function resetAllServeurs() {
     .forEach((p) => resetServeur(p.key));
 }
 
+// --- Pierre Month Reports (carry-over when validating a month) ---
 export function getPierreMonthReports() {
   try { return JSON.parse(localStorage.getItem('pierreMonthReports') || '{}'); } catch { return {}; }
 }
@@ -281,16 +338,18 @@ export function savePierreMonthReports(r) {
 }
 
 // Reset Pierre: delete all his fichesPierre + hide his received notes
-// Debt = total général complet (fiches + notes - BK + dette précédente).
+// Debt = salaires - retraits - notes + remboursements - BK + dette précédente
 export function resetPierre() {
   const allFiches = getFichesPierre();
-  const totalFiches = allFiches.filter((f) => f.type !== 'bk').reduce((a, b) => a + b.montant, 0);
+  const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
+  const totalRetraits = allFiches.filter((f) => f.type === 'retrait').reduce((a, b) => a + Math.abs(b.montant), 0);
+  const totalRemb = allFiches.filter((f) => f.type === 'remboursement_note').reduce((a, b) => a + Math.abs(b.montant), 0);
   const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
     .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
-  const effectiveTotal = (totalFiches || 0) + (totalNotes || 0) - (totalBk || 0) + (getDette('pierre') || 0);
+  const effectiveTotal = (totalSalaires || 0) - (totalRetraits || 0) - (totalNotes || 0) + (totalRemb || 0) - (totalBk || 0) + (getDette('pierre') || 0);
 
   const dettes = getDettes();
   if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
@@ -300,13 +359,15 @@ export function resetPierre() {
   }
   saveDettes(dettes);
 
+  // Full reset clears all month reports
+  localStorage.setItem('pierreMonthReports', JSON.stringify({}));
   localStorage.setItem('fichesPierre', JSON.stringify([]));
   const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
   notes.filter((n) => n.destinataire_key === 'pierre').forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
   localStorage.setItem('resetAt', String(Date.now()));
-  forceDriveSync();
+  scheduleDriveSync();
 }
 
 export function resetTous() {
@@ -362,6 +423,8 @@ export function addNote({ personne, montant, destinataire_key, destinataire_nom,
 export function deleteNote(id) {
   const notes = getNotes().filter((n) => n.id !== id);
   saveNotes(notes);
+  // Sync immédiat pour éviter que la note revienne si on rafraîchit dans les 2 secondes
+  if (driveSyncCallback) driveSyncCallback();
 }
 
 export function rembourserNote(id, date) {
@@ -375,48 +438,31 @@ export function rembourserNote(id, date) {
   if (date) note.rembourseDate = date;
 
   if (!etaitCachee) {
-    const noteMonth = note.date?.substring(0, 7);
-    const rembMonth = (date || new Date().toISOString().slice(0, 10)).substring(0, 7);
-    if (noteMonth && rembMonth && noteMonth !== rembMonth) {
-      // Remboursement inter-mois : garder la note originale dans son mois (historique)
-      // et créer une contre-note positive dans le mois du remboursement
-      notes.push({
-        id: String(Date.now() + Math.random()),
-        personne: note.personne,
-        montant: -note.montant,
-        destinataire_key: note.destinataire_key,
-        destinataire_nom: note.destinataire_nom,
-        date: date || new Date().toISOString().slice(0, 10),
-        remboursement: true,
-        noteOriginaleId: id,
-      });
-    } else {
-      // Même mois : annuler la note (les deux se compensent)
-      note.annulee = true;
-    }
+    // Cas 1 : note active → on l'annule (les deux se compensent, total = 0)
+    // Elle reste visible sur la fiche dans la section "Notes remboursées"
+    note.annulee = true;
   } else {
     // Cas 2 : note d'une session passée (cachée) → créer une entrée fiche +montant
     // La note reste cachée ; le crédit s'affiche via la fiche jusqu'au prochain reset
     const ficheId = String(Date.now() + Math.random());
-    const fiches = getFiches();
-    fiches.push({
-      id: ficheId,
-      personne_key: note.destinataire_key,
-      personne_nom: note.destinataire_nom,
-      date: date || new Date().toISOString().slice(0, 10),
-      montant: -note.montant,
-      type: 'remboursement_note',
-      noteId: id,
-      notePersonne: note.personne,
-      noteDate: note.date,
-    });
-    saveFiches(fiches);
+    const ficheDate = date || new Date().toISOString().slice(0, 10);
+    if (note.destinataire_key === 'pierre') {
+      // Pierre : crédit dans fichesPierre
+      const fp = getFichesPierre();
+      fp.push({ id: ficheId, date: ficheDate, mois: ficheDate.substring(0, 7), type: 'remboursement_note', heures: 0, montant: Math.abs(note.montant), noteId: id, notePersonne: note.personne, noteDate: note.date });
+      saveFichesPierre(fp);
+    } else {
+      const fiches = getFiches();
+      fiches.push({ id: ficheId, personne_key: note.destinataire_key, personne_nom: note.destinataire_nom, date: ficheDate, montant: Math.abs(note.montant), type: 'remboursement_note', noteId: id, notePersonne: note.personne, noteDate: note.date });
+      saveFiches(fiches);
+    }
     note.rembourseeFicheId = ficheId;
   }
 
   saveNotes(notes);
-  // Cas 1 : déjà visible ; Cas 2 : reste cachée. Rien à changer dans hiddenNotes.
-  scheduleDriveSync();
+  // Sync immédiat pour éviter une désynchronisation si la page est rafraîchie dans les 2s
+  if (driveSyncCallback) driveSyncCallback();
+  else scheduleDriveSync();
 }
 
 export function annulerRemboursement(id) {
@@ -427,16 +473,28 @@ export function annulerRemboursement(id) {
   if (note.etaitCacheeAvantRembourse) {
     // Cas 2 : supprimer la fiche crédit associée
     if (note.rembourseeFicheId) {
-      saveFiches(getFiches().filter((f) => f.id !== note.rembourseeFicheId));
+      if (note.destinataire_key === 'pierre') {
+        saveFichesPierre(getFichesPierre().filter((f) => f.id !== note.rembourseeFicheId));
+      } else {
+        saveFiches(getFiches().filter((f) => f.id !== note.rembourseeFicheId));
+      }
     }
     // Remettre la note dans hiddenNotes
     const hidden = getHiddenNotes();
     if (!hidden.includes(id)) hidden.push(id);
     localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
-  } else {
-    // Cas 1 : remettre la note active
+  } else if (note.etaitCacheeAvantRembourse === false) {
+    // Cas 1 vrai : note était active → la remettre active
     note.annulee = false;
     const hidden = getHiddenNotes().filter((h) => h !== id);
+    localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
+  } else {
+    // Note legacy (remboursée avec ancien code, etaitCacheeAvantRembourse inconnu)
+    // On la remet dans hiddenNotes pour que l'utilisateur puisse la re-rembourser
+    // correctement en Cas 2 depuis le Calculateur
+    note.annulee = false;
+    const hidden = getHiddenNotes();
+    if (!hidden.includes(id)) hidden.push(id);
     localStorage.setItem('hiddenNotes', JSON.stringify(hidden));
   }
 
@@ -497,6 +555,7 @@ export function addFichePierre({ date, heures, montantDirect, notes, type = 'sal
     notes: notes || '',
   });
   saveFichesPierre(fiches);
+  if (driveSyncCallback) driveSyncCallback();
   return id;
 }
 
