@@ -574,6 +574,7 @@ export default function Personne() {
         Total Général : {fmt(totalGeneral)} €
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
           {fmt(totalSalaires)} (sal.) + {fmt(totalNotes)} (notes) - {fmt(totalBop)} (BOP) - {fmt(totalBk)} (BK)
+          {totalRemb !== 0 && ` + ${fmt(totalRemb)} (remb.)`}
           {dette !== 0 && ` + ${fmt(dette)} (report)`}
         </div>
       </div>
