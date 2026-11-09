@@ -300,7 +300,7 @@ export function resetServeur(key) {
   const rembNoteIds = new Set(rembFiches.map((f) => f.noteId).filter(Boolean));
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
-    .filter((n) => n.destinataire_key === key && !n.annulee && !hidden.includes(n.id) && !rembNoteIds.has(n.id))
+    .filter((n) => n.destinataire_key === key && !n.annulee && !n.rembourse && !hidden.includes(n.id) && !rembNoteIds.has(n.id))
     .reduce((a, b) => a + b.montant, 0);
   const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) + (totalRemb || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
 
@@ -310,16 +310,19 @@ export function resetServeur(key) {
   } else if (Number.isFinite(effectiveTotal)) {
     delete dettes[key];
   }
-  saveDettes(dettes);
 
-  // Delete all fiches (salaires, BK, BOP) — bopGlobal cumul persists separately
-  deletePersonneData(key);
-  const notes = getNotes();
+  // Write all state atomically to localStorage BEFORE syncing Drive,
+  // so the single Drive upload is fully consistent (no intermediate state
+  // where new debt + old fiches arrive together and cause double-counting).
+  localStorage.setItem('dettes', JSON.stringify(dettes));
+  localStorage.setItem('fiches', JSON.stringify(getFiches().filter((f) => f.personne_key !== key)));
   const hiddenSet = new Set(getHiddenNotes());
-  notes.filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
+  getNotes().filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
   localStorage.setItem('resetAt', String(Date.now()));
-  scheduleDriveSync();
+  // One immediate Drive sync with fully consistent state
+  if (driveSyncCallback) driveSyncCallback();
+  else scheduleDriveSync();
 }
 
 export function resetAllServeurs() {
@@ -347,7 +350,7 @@ export function resetPierre() {
   const totalBk = allFiches.filter((f) => f.type === 'bk').reduce((a, b) => a + b.montant, 0);
   const hidden = getHiddenNotes();
   const totalNotes = getNotes()
-    .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !hidden.includes(n.id))
+    .filter((n) => n.destinataire_key === 'pierre' && !n.annulee && !n.rembourse && !hidden.includes(n.id))
     .reduce((a, b) => a + b.montant, 0);
   const effectiveTotal = (totalSalaires || 0) - (totalRetraits || 0) - (totalNotes || 0) + (totalRemb || 0) - (totalBk || 0) + (getDette('pierre') || 0);
 
@@ -357,17 +360,17 @@ export function resetPierre() {
   } else if (Number.isFinite(effectiveTotal)) {
     delete dettes['pierre'];
   }
-  saveDettes(dettes);
 
-  // Full reset clears all month reports
+  // Write all state atomically before syncing Drive
+  localStorage.setItem('dettes', JSON.stringify(dettes));
   localStorage.setItem('pierreMonthReports', JSON.stringify({}));
   localStorage.setItem('fichesPierre', JSON.stringify([]));
-  const notes = getNotes();
   const hiddenSet = new Set(getHiddenNotes());
-  notes.filter((n) => n.destinataire_key === 'pierre').forEach((n) => hiddenSet.add(n.id));
+  getNotes().filter((n) => n.destinataire_key === 'pierre').forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
   localStorage.setItem('resetAt', String(Date.now()));
-  scheduleDriveSync();
+  if (driveSyncCallback) driveSyncCallback();
+  else scheduleDriveSync();
 }
 
 export function resetTous() {
