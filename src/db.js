@@ -290,7 +290,8 @@ export function setBopGlobal(key, val) {
 
 // Reset: delete fiches + hide notes from server's view (notes stay visible in NotesClients)
 // Debt = total général complet (salaires + notes + remb - BOP - BK + dette précédente).
-export function resetServeur(key) {
+// Internal: applies reset to localStorage only, no Drive sync (caller is responsible).
+function _resetServeurLocal(key, dettes) {
   const allFiches = getFiches().filter((f) => f.personne_key === key);
   const totalSalaires = allFiches.filter((f) => f.type === 'salaire').reduce((a, b) => a + b.montant, 0);
   const totalBop = allFiches.filter((f) => f.type === 'bop').reduce((a, b) => a + b.montant, 0);
@@ -304,31 +305,37 @@ export function resetServeur(key) {
     .reduce((a, b) => a + b.montant, 0);
   const effectiveTotal = (totalSalaires || 0) + (totalNotes || 0) + (totalRemb || 0) - (totalBop || 0) - (totalBk || 0) + (getDette(key) || 0);
 
-  const dettes = getDettes();
   if (Number.isFinite(effectiveTotal) && effectiveTotal < 0) {
     dettes[key] = effectiveTotal;
   } else if (Number.isFinite(effectiveTotal)) {
     delete dettes[key];
   }
 
-  // Write all state atomically to localStorage BEFORE syncing Drive,
-  // so the single Drive upload is fully consistent (no intermediate state
-  // where new debt + old fiches arrive together and cause double-counting).
-  localStorage.setItem('dettes', JSON.stringify(dettes));
   localStorage.setItem('fiches', JSON.stringify(getFiches().filter((f) => f.personne_key !== key)));
   const hiddenSet = new Set(getHiddenNotes());
   getNotes().filter((n) => n.destinataire_key === key).forEach((n) => hiddenSet.add(n.id));
   localStorage.setItem('hiddenNotes', JSON.stringify([...hiddenSet]));
+}
+
+export function resetServeur(key) {
+  const dettes = getDettes();
+  _resetServeurLocal(key, dettes);
+  localStorage.setItem('dettes', JSON.stringify(dettes));
   localStorage.setItem('resetAt', String(Date.now()));
-  // One immediate Drive sync with fully consistent state
   if (driveSyncCallback) driveSyncCallback();
   else scheduleDriveSync();
 }
 
 export function resetAllServeurs() {
+  const dettes = getDettes();
   getPersonnes()
     .filter((p) => p.key !== 'pierre')
-    .forEach((p) => resetServeur(p.key));
+    .forEach((p) => _resetServeurLocal(p.key, dettes));
+  // Write dettes and resetAt once, then one single Drive sync for all resets combined
+  localStorage.setItem('dettes', JSON.stringify(dettes));
+  localStorage.setItem('resetAt', String(Date.now()));
+  if (driveSyncCallback) driveSyncCallback();
+  else scheduleDriveSync();
 }
 
 // --- Pierre Month Reports (carry-over when validating a month) ---
